@@ -1,0 +1,33 @@
+# Praetor
+
+Praetor is a runtime policy enforcement layer for AI agents. It sits
+between an agent and its tools, evaluates a declarative policy on
+every tool call, and returns one of four decisions:
+
+- `allow` — pass the call through unchanged
+- `deny` — block the call; substitute a sentinel so the model can re-plan
+- `transform` — rewrite the call's arguments (e.g. redact secrets)
+- `require_approval` — pause until a human approves or denies
+
+Every decision is written to a tamper-evident, Merkle-chained audit
+log. The hosted control plane (commercial) adds policy authoring UI,
+audit search, an approval inbox, and pre-built compliance report
+bundles for NIST AI RMF, ISO/IEC 42001, and the EU AI Act.
+
+## Components
+
+- **Engine** — the policy AST, evaluator, YAML parser, and CLI.
+  Apache 2.0. Sub-5ms p99 evaluation on a 100-policy bundle.
+- **SDK** — Anthropic & OpenAI middleware, blocking approval flow,
+  streaming audit log with at-least-once shipping.
+- **Control plane** — FastAPI service for ingestion, search, approvals,
+  reports. Backed by Postgres.
+- **Web UI** — Next.js 15 app for everything humans touch.
+
+## Why
+
+Mid-market and enterprise teams running agents in regulated industries
+(finserv, healthcare, insurance, legal) need to prove — to their CISO,
+their regulator, and their auditor — that the model can't do anything
+their policy doesn't permit. Praetor turns "trust me" into a signed,
+queryable, framework-mapped log.

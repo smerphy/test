@@ -1,0 +1,45 @@
+# ISO/IEC 42001:2023 — AI Management System Starter Bundle
+#
+# Maps selected Annex A controls to runtime policy enforcement.
+policies:
+  # A.5.2 — AI policy: top management establishes an AI policy that is
+  # appropriate to the purpose of the organization. We surface every
+  # tool-call decision into the audit log for the policy to inspect.
+  # This implicit policy applies even with no rule match (default deny
+  # plus signed audit entries).
+  - id: iso-42001-a5-2-allow-internal-readonly-rag
+    effect: allow
+    when:
+      op: and
+      clauses:
+        - {op: in, path: tool.name, values: [vector.search, doc.read, kb.query]}
+        - {op: eq, path: context.classification, value: internal}
+    reason: read-only RAG tools on internal documents are permitted (ISO/IEC 42001 A.5.2)
+    metadata:
+      iso_42001: A.5.2
+
+  # A.6.1.3 — AI system impact assessment.
+  # Require approval for any tool that emits external communications
+  # so impact can be assessed before transmission.
+  - id: iso-42001-a6-1-3-approve-external-comms
+    effect: require_approval
+    when:
+      op: in
+      path: tool.name
+      values: [email.send, slack.post, twitter.post, sms.send]
+    reason: external communications require human approval (ISO/IEC 42001 A.6.1.3)
+    metadata:
+      iso_42001: A.6.1.3
+
+  # A.8.4 — AI system operation and monitoring.
+  # Deny any tool that disables observability or audit.
+  - id: iso-42001-a8-4-block-disabling-audit
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.name, pattern: '(?i)audit.*disable|log.*disable'}
+        - {op: matches, path: tool.arguments.action, pattern: '(?i)disable_audit|delete_logs'}
+    reason: tools that disable audit/observability are forbidden (ISO/IEC 42001 A.8.4)
+    metadata:
+      iso_42001: A.8.4
