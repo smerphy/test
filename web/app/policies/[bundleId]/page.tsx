@@ -12,7 +12,8 @@ export default async function BundleDetailPage({
   let versions: PolicyVersion[] = [];
   let error: string | null = null;
   try {
-    versions = await api.listVersions(bundleId);
+    const summaries = await api.listVersions(bundleId);
+    versions = await Promise.all(summaries.map((s) => api.getVersion(s.id)));
   } catch (e) {
     error = (e as Error).message;
   }

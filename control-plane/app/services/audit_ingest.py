@@ -23,13 +23,13 @@ GENESIS_HASH = "0" * 64
 
 def _canonical_hash(payload: dict[str, object]) -> str:
     return hashlib.sha256(
-        json.dumps(
-            payload, sort_keys=True, separators=(",", ":"), default=str
-        ).encode("utf-8")
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
 
 def _verify_hash(event: AuditEventIn) -> None:
+    # Use the same wire-bytes path as the SDK's verify_chain so that
+    # any conformant writer's events ingest cleanly.
     body = event.model_dump(mode="json", exclude={"hash"})
     expected = _canonical_hash(body)
     if expected != event.hash:
@@ -54,10 +54,25 @@ def _latest_event(
     return session.execute(stmt).scalar_one_or_none()
 
 
+def _by_hash(
+    session: Session, *, org_id: str, hash_: str
+) -> AuditEvent | None:
+    stmt = select(AuditEvent).where(
+        AuditEvent.organization_id == org_id, AuditEvent.hash == hash_
+    )
+    return session.execute(stmt).scalar_one_or_none()
+
+
 def ingest_event(
     session: Session, *, org_id: str, event: AuditEventIn
 ) -> AuditEvent:
     _verify_hash(event)
+
+    # Idempotency: at-least-once shippers may re-send an event whose
+    # ack was lost. Detect by hash and return the existing row.
+    existing = _by_hash(session, org_id=org_id, hash_=event.hash)
+    if existing is not None:
+        return existing
 
     latest = _latest_event(
         session,

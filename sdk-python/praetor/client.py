@@ -18,8 +18,9 @@ from praetor_engine.types import (
 )
 
 from praetor.approval import ApprovalHandler
-from praetor.audit import AuditSink, NullAuditSink
+from praetor.audit import AuditSink, JsonlAuditSink, NullAuditSink, RemoteShipper
 from praetor.errors import PolicyDenied
+from praetor.transport import HttpTransport
 
 
 class PraetorClient:
@@ -39,6 +40,10 @@ class PraetorClient:
         policies: Sequence[Policy] | None = None,
         bundle_path: Path | None = None,
         audit_sink: AuditSink | None = None,
+        audit_log_path: Path | None = None,
+        control_plane_url: str | None = None,
+        api_key: str | None = None,
+        org_slug: str | None = None,
         approval_handler: ApprovalHandler | None = None,
         default_agent_id: str | None = None,
     ) -> None:
@@ -47,9 +52,47 @@ class PraetorClient:
         if bundle_path is not None:
             policies = parse_bundle_file(bundle_path)
         self._evaluator = Evaluator(policies=policies or [])
-        self._audit: AuditSink = audit_sink or NullAuditSink()
+
+        # Audit sink resolution:
+        #   audit_sink= overrides everything else
+        #   audit_log_path= → JsonlAuditSink at that path
+        #   neither → NullAuditSink (events dropped silently)
+        if audit_sink is not None and audit_log_path is not None:
+            raise ValueError("pass audit_sink or audit_log_path, not both")
+        if audit_sink is not None:
+            self._audit = audit_sink
+        elif audit_log_path is not None:
+            self._audit = JsonlAuditSink(audit_log_path)
+        else:
+            self._audit = NullAuditSink()
+
         self._approval = approval_handler
         self._default_agent_id = default_agent_id
+
+        # Optional control-plane shipping. Requires a local JsonlAuditSink
+        # to tail; raise loudly if the caller wired this without one.
+        self._shipper: RemoteShipper | None = None
+        if control_plane_url is not None:
+            if not isinstance(self._audit, JsonlAuditSink):
+                raise ValueError(
+                    "control_plane_url requires audit_log_path "
+                    "(remote shipping tails a local JsonlAuditSink)"
+                )
+            transport = HttpTransport(
+                control_plane_url, api_key=api_key, org_slug=org_slug
+            )
+            offset = self._audit.path.with_suffix(self._audit.path.suffix + ".offset")
+            self._shipper = RemoteShipper(self._audit, transport, offset_path=offset)
+            self._shipper.start()
+
+    @property
+    def shipper(self) -> RemoteShipper | None:
+        return self._shipper
+
+    def stop(self) -> None:
+        """Stop background workers (audit shipper). Safe to call repeatedly."""
+        if self._shipper is not None:
+            self._shipper.stop()
 
     @property
     def policies(self) -> tuple[Policy, ...]:

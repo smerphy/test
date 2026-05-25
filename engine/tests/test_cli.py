@@ -9,6 +9,7 @@ from praetor_engine.cli import (
     EXIT_ALLOW,
     EXIT_BAD_INPUT,
     EXIT_DENY,
+    EXIT_OK,
     EXIT_REQUIRE_APPROVAL,
     EXIT_TRANSFORM,
     main,
@@ -232,3 +233,38 @@ class TestEvalErrors:
         )
         assert rc == EXIT_BAD_INPUT
         assert "invalid PolicyInput" in capsys.readouterr().err
+
+
+class TestValidateCommand:
+    def test_valid_bundle_emits_summary(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = main(["validate", "--policy", str(_write_bundle(tmp_path, ALLOW_BUNDLE))])
+        assert rc == EXIT_OK
+        summary = json.loads(capsys.readouterr().out)
+        assert summary["policy_count"] == 1
+        assert summary["policies"][0]["id"] == "allow-http"
+        assert summary["policies"][0]["effect"] == "allow"
+
+    def test_invalid_bundle_returns_64(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = main(
+            ["validate", "--policy", str(_write_bundle(tmp_path, "policies: 1\n"))]
+        )
+        assert rc == EXIT_BAD_INPUT
+        assert "must be a list" in capsys.readouterr().err
+
+    def test_missing_bundle_returns_64(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = main(["validate", "--policy", str(tmp_path / "nope.yaml")])
+        assert rc == EXIT_BAD_INPUT
+
+
+class TestListBundlesCommand:
+    def test_lists_starter_bundles(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = main(["list-bundles"])
+        assert rc == EXIT_OK
+        names = json.loads(capsys.readouterr().out)
+        assert set(names) >= {"nist_ai_rmf", "iso_42001", "eu_ai_act"}

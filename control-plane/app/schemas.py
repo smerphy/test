@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.models import ApprovalStatus, ReportStatus, RolloutState
+
+
+def _canonical_timestamp(value: datetime) -> str:
+    """Match the SDK's wire format: `YYYY-MM-DDTHH:MM:SS.sssZ`."""
+    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
+    aware = aware.astimezone(UTC)
+    ms = aware.microsecond // 1000
+    return f"{aware.strftime('%Y-%m-%dT%H:%M:%S')}.{ms:03d}Z"
 
 _BASE = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -67,6 +75,19 @@ class PolicyVersionOut(BaseModel):
     created_at: datetime
 
 
+class PolicyVersionSummary(BaseModel):
+    """Lightweight version row for list endpoints (no yaml_text)."""
+
+    model_config = _BASE
+    id: str
+    bundle_id: str
+    version_number: int
+    policy_count: int
+    author_email: str | None
+    notes: str | None
+    created_at: datetime
+
+
 class PolicyRolloutIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version_id: str
@@ -99,6 +120,10 @@ class AuditEventIn(BaseModel):
     evaluator_version: str
     prev_hash: str = Field(..., min_length=64, max_length=64)
     hash: str = Field(..., min_length=64, max_length=64)
+
+    @field_serializer("timestamp")
+    def _serialize_timestamp(self, value: datetime) -> str:
+        return _canonical_timestamp(value)
 
 
 class AuditEventOut(BaseModel):

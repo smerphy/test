@@ -26,6 +26,7 @@ from app.schemas import (
     PolicyRolloutOut,
     PolicyVersionIn,
     PolicyVersionOut,
+    PolicyVersionSummary,
     ProjectIn,
     ProjectOut,
 )
@@ -144,17 +145,31 @@ def create_version(
 
 
 @router.get(
-    "/bundles/{bundle_id}/versions", response_model=list[PolicyVersionOut]
+    "/bundles/{bundle_id}/versions", response_model=list[PolicyVersionSummary]
 )
 def list_versions(
     bundle_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> list[PolicyVersion]:
+    """List versions of a bundle. Omits `yaml_text` for payload sanity;
+    fetch one version's full text via `GET /versions/{version_id}`."""
     bundle = session.get(PolicyBundle, bundle_id)
     if bundle is None or bundle.project.organization_id != org.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="bundle not found")
     return list(bundle.versions)
+
+
+@router.get("/versions/{version_id}", response_model=PolicyVersionOut)
+def get_version(
+    version_id: str,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> PolicyVersion:
+    version = session.get(PolicyVersion, version_id)
+    if version is None or version.bundle.project.organization_id != org.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="version not found")
+    return version
 
 
 @router.post(

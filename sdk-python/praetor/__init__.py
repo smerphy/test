@@ -15,6 +15,7 @@ from praetor.audit import (
 )
 from praetor.client import PraetorClient
 from praetor.errors import ApprovalTimeout, AuditError, PolicyDenied, PraetorError
+from praetor.transport import HttpTransport
 
 __all__ = [
     "ApprovalHandler",
@@ -24,6 +25,7 @@ __all__ = [
     "AuditError",
     "AuditEvent",
     "AuditSink",
+    "HttpTransport",
     "JsonlAuditSink",
     "NullAuditSink",
     "PolicyDenied",

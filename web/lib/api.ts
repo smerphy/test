@@ -26,15 +26,18 @@ export interface PolicyBundle {
   version_count: number;
 }
 
-export interface PolicyVersion {
+export interface PolicyVersionSummary {
   id: string;
   bundle_id: string;
   version_number: number;
-  yaml_text: string;
   policy_count: number;
   author_email: string | null;
   notes: string | null;
   created_at: string;
+}
+
+export interface PolicyVersion extends PolicyVersionSummary {
+  yaml_text: string;
 }
 
 export type Decision = "allow" | "deny" | "transform" | "require_approval";
@@ -124,7 +127,9 @@ export const api = {
   listBundles: (projectId: string) =>
     call<PolicyBundle[]>(`/projects/${projectId}/bundles`),
   listVersions: (bundleId: string) =>
-    call<PolicyVersion[]>(`/bundles/${bundleId}/versions`),
+    call<PolicyVersionSummary[]>(`/bundles/${bundleId}/versions`),
+  getVersion: (versionId: string) =>
+    call<PolicyVersion>(`/versions/${versionId}`),
   createVersion: (bundleId: string, body: { yaml_text: string; notes?: string }) =>
     call<PolicyVersion>(`/bundles/${bundleId}/versions`, {
       method: "POST",

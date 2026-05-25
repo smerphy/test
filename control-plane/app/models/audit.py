@@ -3,7 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -50,4 +58,9 @@ class AuditEvent(IdMixin, TimestampMixin, Base):
         Index("ix_audit_org_decision", "organization_id", "decision"),
         Index("ix_audit_org_tool", "organization_id", "tool_name"),
         Index("ix_audit_session", "session_id"),
+        # At-least-once shipping retries: the SDK may ship the same event
+        # twice (server received, ack lost). The hash is the natural
+        # idempotency key; the ingest path swallows IntegrityError and
+        # returns the existing row.
+        UniqueConstraint("organization_id", "hash", name="uq_audit_org_hash"),
     )

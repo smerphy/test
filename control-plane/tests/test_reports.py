@@ -11,6 +11,9 @@ from app.models import AuditEvent, Organization
 def _seed_events(session: Session, org: Organization, base: datetime) -> None:
     chain_prev = "0" * 64
     for i, decision in enumerate(["allow", "allow", "deny", "require_approval"]):
+        # Hash needs to be unique per event (uq_audit_org_hash).
+        # Tests skip chain re-verification — we just want distinct rows.
+        synthetic_hash = f"{i:064x}"
         ev = AuditEvent(
             organization_id=org.id,
             seq=i,
@@ -25,10 +28,10 @@ def _seed_events(session: Session, org: Organization, base: datetime) -> None:
             context={},
             evaluator_version="0.1.0",
             prev_hash=chain_prev,
-            hash="f" * 64,  # tests don't recompute the chain here
+            hash=synthetic_hash,
         )
         session.add(ev)
-        chain_prev = ev.hash
+        chain_prev = synthetic_hash
     session.commit()
 
 

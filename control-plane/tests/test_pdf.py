@@ -25,7 +25,7 @@ def _seed(session: Session, org: Organization, base: datetime) -> None:
                 context={},
                 evaluator_version="0.1.0",
                 prev_hash="0" * 64,
-                hash="f" * 64,
+                hash=f"{i:064x}",  # unique per row
             )
         )
     session.commit()

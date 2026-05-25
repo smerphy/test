@@ -26,12 +26,25 @@ from typing import Any, Final, Protocol
 
 from praetor_engine import __version__ as _ENGINE_VERSION
 from praetor_engine.types import Decision, DecisionResult, PolicyInput
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer
 
 from praetor.errors import AuditError
 
 GENESIS_HASH: Final[str] = "0" * 64
 """SHA-256 placeholder used as the prev_hash of the first event in a log."""
+
+
+def _canonical_timestamp(value: datetime) -> str:
+    """Canonical wire format: `YYYY-MM-DDTHH:MM:SS.sssZ` (ms precision, Z suffix).
+
+    Matches `Date.prototype.toISOString()` in JavaScript so audit chains
+    are cross-language verifiable.
+    """
+    if value.tzinfo is None:
+        raise ValueError("timestamp must be timezone-aware")
+    aware = value.astimezone(UTC)
+    ms = aware.microsecond // 1000
+    return f"{aware.strftime('%Y-%m-%dT%H:%M:%S')}.{ms:03d}Z"
 
 
 class AuditEvent(BaseModel):
@@ -55,11 +68,21 @@ class AuditEvent(BaseModel):
     prev_hash: str = Field(..., min_length=64, max_length=64)
     hash: str = Field(..., min_length=64, max_length=64)
 
+    @field_serializer("timestamp")
+    def _serialize_timestamp(self, value: datetime) -> str:
+        return _canonical_timestamp(value)
+
 
 def _canonical_bytes_for_hashing(event_minus_hash: dict[str, Any]) -> bytes:
-    """Canonical JSON bytes: sorted keys, no whitespace, UTF-8."""
+    """Canonical JSON bytes: sorted keys, no whitespace, UTF-8.
+
+    Same algorithm in both Python and TS SDKs. Hashing over this shape
+    rather than over the in-memory model means cross-language chain
+    verification works as long as both writers use the same canonical
+    timestamp / scalar serialization.
+    """
     return json.dumps(
-        event_minus_hash, sort_keys=True, separators=(",", ":"), default=str
+        event_minus_hash, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
 
 
@@ -106,27 +129,28 @@ def _build_event(
     now: datetime | None = None,
 ) -> AuditEvent:
     timestamp = now or datetime.now(UTC)
-    # Build with a placeholder hash so we can compute the real one from the
-    # exact same serialization shape that `verify_chain` will see.
-    placeholder = AuditEvent(
-        seq=seq,
-        timestamp=timestamp,
-        agent_id=policy_input.agent.id,
-        session_id=policy_input.session.id,
-        tool_name=policy_input.tool.name,
-        tool_arguments=policy_input.tool.arguments,
-        tool_use_id=policy_input.tool.tool_use_id,
-        decision=decision.decision,
-        reason=decision.reason,
-        matched_policy_id=decision.matched_policy_id,
-        suggested_transform=decision.suggested_transform,
-        context=policy_input.context,
-        evaluator_version=_ENGINE_VERSION,
-        prev_hash=prev_hash,
-        hash=_HASH_PLACEHOLDER,
-    )
-    body = placeholder.model_dump(mode="json", exclude={"hash"})
-    return placeholder.model_copy(update={"hash": _compute_hash(body)})
+    # Build the body as a plain dict with canonical wire-format values.
+    # Hashing over this dict directly (rather than re-serializing a
+    # Pydantic model) keeps the hash language-agnostic: any writer that
+    # produces the same canonical JSON gets the same hash.
+    body: dict[str, Any] = {
+        "seq": seq,
+        "timestamp": _canonical_timestamp(timestamp),
+        "agent_id": policy_input.agent.id,
+        "session_id": policy_input.session.id,
+        "tool_name": policy_input.tool.name,
+        "tool_arguments": policy_input.tool.arguments,
+        "tool_use_id": policy_input.tool.tool_use_id,
+        "decision": decision.decision.value,
+        "reason": decision.reason,
+        "matched_policy_id": decision.matched_policy_id,
+        "suggested_transform": decision.suggested_transform,
+        "context": policy_input.context,
+        "evaluator_version": _ENGINE_VERSION,
+        "prev_hash": prev_hash,
+    }
+    body["hash"] = _compute_hash({k: v for k, v in body.items() if k != "hash"})
+    return AuditEvent.model_validate(body)
 
 
 class JsonlAuditSink:
@@ -212,35 +236,49 @@ class JsonlAuditSink:
 def verify_chain(path: Path) -> int:
     """Replay the chain and return the verified event count.
 
-    Raises `AuditError` on the first integrity violation (broken link or
-    recomputed-hash mismatch).
+    Hashes the raw on-wire JSON (minus the `hash` field), so a chain
+    produced by any conformant SDK (Python, TypeScript, …) verifies
+    here as long as both writers use the same canonical-JSON convention.
+
+    Raises `AuditError` on the first integrity violation (broken link,
+    recomputed-hash mismatch, or invalid shape).
     """
     count = 0
     expected_prev = GENESIS_HASH
     if not path.exists():
         return 0
     with open(path) as f:
-        for line_no, raw in enumerate(f, start=1):
-            stripped = raw.strip()
+        for line_no, raw_line in enumerate(f, start=1):
+            stripped = raw_line.strip()
             if not stripped:
                 continue
             try:
-                event = AuditEvent.model_validate_json(stripped)
+                raw_dict = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise AuditError(f"line {line_no}: invalid JSON: {exc}") from exc
+            if not isinstance(raw_dict, dict) or "hash" not in raw_dict:
+                raise AuditError(f"line {line_no}: not an audit event object")
+
+            stored_hash = raw_dict["hash"]
+            # Validate shape — rejects unknown fields, wrong types, etc.
+            try:
+                AuditEvent.model_validate(raw_dict)
             except Exception as exc:
-                raise AuditError(f"line {line_no}: invalid JSON / shape: {exc}") from exc
-            if event.prev_hash != expected_prev:
+                raise AuditError(f"line {line_no}: invalid event shape: {exc}") from exc
+
+            if raw_dict["prev_hash"] != expected_prev:
                 raise AuditError(
                     f"line {line_no}: prev_hash mismatch "
-                    f"(expected {expected_prev}, got {event.prev_hash})"
+                    f"(expected {expected_prev}, got {raw_dict['prev_hash']})"
                 )
-            body = event.model_dump(mode="json", exclude={"hash"})
+            body = {k: v for k, v in raw_dict.items() if k != "hash"}
             recomputed = _compute_hash(body)
-            if recomputed != event.hash:
+            if recomputed != stored_hash:
                 raise AuditError(
                     f"line {line_no}: hash mismatch "
-                    f"(recomputed {recomputed}, stored {event.hash})"
+                    f"(recomputed {recomputed}, stored {stored_hash})"
                 )
-            expected_prev = event.hash
+            expected_prev = stored_hash
             count += 1
     return count
 

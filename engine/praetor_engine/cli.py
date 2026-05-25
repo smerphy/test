@@ -1,13 +1,15 @@
 """Praetor CLI.
 
-Currently exposes a single sub-command:
+Sub-commands:
 
-    praetor eval --policy bundle.yaml --input input.json
+    praetor eval     --policy bundle.yaml --input input.json
+    praetor validate --policy bundle.yaml
+    praetor list-bundles
 
-Writes the resulting `DecisionResult` as JSON to stdout. Exit codes
-encode the decision so callers can branch without parsing stdout:
+Writes results as JSON to stdout. Exit codes encode the result so
+callers can branch without parsing stdout:
 
-    0 = allow
+    0 = success / allow
     1 = deny (explicit rule or default-deny)
     2 = transform suggested
     3 = require_approval
@@ -24,10 +26,12 @@ from typing import Final
 
 from pydantic import ValidationError
 
-from praetor_engine.evaluator import Evaluator
+from praetor_engine.bundles import list_bundles
+from praetor_engine.evaluator import Evaluator, Policy
 from praetor_engine.parser import PolicyParseError, parse_bundle_file
 from praetor_engine.types import Decision, PolicyInput
 
+EXIT_OK: Final[int] = 0
 EXIT_ALLOW: Final[int] = 0
 EXIT_DENY: Final[int] = 1
 EXIT_TRANSFORM: Final[int] = 2
@@ -42,15 +46,26 @@ _DECISION_EXIT: dict[Decision, int] = {
 }
 
 
-def _eval_cmd(args: argparse.Namespace) -> int:
+def _load_policies(path: Path) -> tuple[list[Policy], int]:
+    """Load + parse a bundle; on error, write to stderr and return ([], exit_code).
+
+    Returns (policies, 0) on success.
+    """
     try:
-        policies = parse_bundle_file(args.policy)
+        policies = parse_bundle_file(path)
+        return policies, EXIT_OK
     except FileNotFoundError as exc:
         print(f"error: policy file not found: {exc}", file=sys.stderr)
-        return EXIT_BAD_INPUT
+        return [], EXIT_BAD_INPUT
     except PolicyParseError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return EXIT_BAD_INPUT
+        return [], EXIT_BAD_INPUT
+
+
+def _eval_cmd(args: argparse.Namespace) -> int:
+    policies, rc = _load_policies(args.policy)
+    if rc != EXIT_OK:
+        return rc
 
     try:
         raw_input = json.loads(args.input.read_text())
@@ -70,6 +85,31 @@ def _eval_cmd(args: argparse.Namespace) -> int:
     result = Evaluator(policies=policies).evaluate(policy_input)
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return _DECISION_EXIT[result.decision]
+
+
+def _validate_cmd(args: argparse.Namespace) -> int:
+    policies, rc = _load_policies(args.policy)
+    if rc != EXIT_OK:
+        return rc
+
+    summary = {
+        "policy_count": len(policies),
+        "policies": [
+            {
+                "id": p.id,
+                "effect": p.effect.value,
+                "metadata": p.metadata,
+            }
+            for p in policies
+        ],
+    }
+    sys.stdout.write(json.dumps(summary, indent=2) + "\n")
+    return EXIT_OK
+
+
+def _list_bundles_cmd(args: argparse.Namespace) -> int:
+    sys.stdout.write(json.dumps(list_bundles(), indent=2) + "\n")
+    return EXIT_OK
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -96,6 +136,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to JSON-encoded PolicyInput",
     )
     ev.set_defaults(func=_eval_cmd)
+
+    vd = sub.add_parser(
+        "validate",
+        help="Parse + validate a YAML policy bundle. Exits 64 on errors.",
+    )
+    vd.add_argument(
+        "--policy", required=True, type=Path, help="Path to YAML policy bundle"
+    )
+    vd.set_defaults(func=_validate_cmd)
+
+    lb = sub.add_parser(
+        "list-bundles",
+        help="List the starter compliance bundles shipped with the engine.",
+    )
+    lb.set_defaults(func=_list_bundles_cmd)
+
     return parser
 
 

@@ -1,3 +1,4 @@
+from praetor_engine.bundles import list_bundles, load_bundle
 from praetor_engine.evaluator import Evaluator, Policy
 from praetor_engine.predicates import (
     AlwaysPredicate,
@@ -36,6 +37,8 @@ __all__ = [
     "Predicate",
     "SessionInfo",
     "ToolCall",
+    "list_bundles",
+    "load_bundle",
     "parse_predicate",
 ]
 

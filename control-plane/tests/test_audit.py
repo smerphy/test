@@ -92,6 +92,20 @@ def test_ingest_seq_must_be_sequential(client: TestClient) -> None:
     assert "seq mismatch" in r.json()["errors"][0]
 
 
+def test_duplicate_event_accepted_idempotently(client: TestClient) -> None:
+    ev = _event(seq=0, prev_hash=GENESIS)
+    # First ingest accepts.
+    assert client.post("/audit/events", json=[ev]).json()["accepted"] == 1
+    # Second ingest of the same event must also accept (idempotent
+    # behavior for at-least-once retries), not error or duplicate-row.
+    second = client.post("/audit/events", json=[ev])
+    assert second.status_code == 202
+    assert second.json()["accepted"] == 1
+    assert second.json()["rejected"] == 0
+    # And the search returns just one row.
+    assert len(client.get("/audit/events").json()) == 1
+
+
 def test_search_filters(client: TestClient) -> None:
     e0 = _event(seq=0, prev_hash=GENESIS, decision="allow", tool_name="http.get")
     e1 = _event(seq=1, prev_hash=e0["hash"], decision="deny", tool_name="http.post")
