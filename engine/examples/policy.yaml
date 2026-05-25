@@ -1,0 +1,39 @@
+# Example Praetor policy bundle.
+#
+# Evaluate against an input with:
+#   praetor eval --policy engine/examples/policy.yaml --input engine/examples/input.json
+policies:
+  - id: allow-public-https
+    effect: allow
+    when:
+      op: and
+      clauses:
+        - op: eq
+          path: tool.name
+          value: http.get
+        - op: matches
+          path: tool.arguments.url
+          pattern: '^https://'
+    reason: outbound https requests are on the allowlist
+    metadata:
+      nist_ai_rmf: GOVERN-1.1
+
+  - id: deny-internal-hosts
+    effect: deny
+    when:
+      op: matches
+      path: tool.arguments.url
+      pattern: '\.internal($|/)'
+    reason: agents must not reach internal hostnames
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+
+  - id: redact-querystring-tokens
+    effect: transform
+    when:
+      op: matches
+      path: tool.arguments.url
+      pattern: 'token='
+    reason: redact tokens before the agent sees the request
+    transform:
+      url: '<redacted>'

@@ -7,6 +7,7 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Praetor" }]
 dependencies = [
     "pydantic>=2.6",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -17,9 +18,11 @@ dev = [
     "hypothesis>=6.100",
     "mypy>=1.10",
     "ruff>=0.6",
+    "types-PyYAML>=6.0",
 ]
 
 [project.scripts]
+praetor = "praetor_engine.cli:main"
 praetor-engine-schemas = "praetor_engine.schema:_main"
 
 [build-system]

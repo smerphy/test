@@ -309,7 +309,7 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "A single declarative policy. Surface shape only \u2014 evaluation lives in `Evaluator`.",
+  "description": "A single declarative policy.",
   "properties": {
     "effect": {
       "$ref": "#/$defs/Decision"
@@ -319,10 +319,32 @@
       "title": "Id",
       "type": "string"
     },
+    "metadata": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Free-form metadata. Convention: framework control mappings (e.g. {'nist_ai_rmf': 'GOVERN-1.1'}). Carried through to audit logs.",
+      "title": "Metadata",
+      "type": "object"
+    },
     "reason": {
       "minLength": 1,
       "title": "Reason",
       "type": "string"
+    },
+    "transform": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Replacement tool arguments. Required iff effect == TRANSFORM. MVP shape: a static dict; will likely grow into a path/template DSL once we have real workloads to learn from.",
+      "title": "Transform"
     },
     "when": {
       "discriminator": {
