@@ -12,9 +12,6 @@ build/
 .venv/
 .python-version
 
-# uv
-uv.lock
-
 # Node / pnpm
 node_modules/
 .next/

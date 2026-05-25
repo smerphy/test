@@ -15,21 +15,21 @@ Spec contract (Phase 1, items 3-4):
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from praetor_engine.predicates import Predicate
 from praetor_engine.types import Decision, DecisionResult, PolicyInput
 
 
 class Policy(BaseModel):
-    """A single declarative policy. Surface shape only — semantics live in `Evaluator`."""
+    """A single declarative policy. Surface shape only — evaluation lives in `Evaluator`."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str = Field(..., min_length=1)
     effect: Decision
-    when: dict[str, Any] = Field(default_factory=dict)
+    when: Predicate
     reason: str = Field(..., min_length=1)
 
 
@@ -38,7 +38,7 @@ class Evaluator:
         self._policies = tuple(policies)
 
     def evaluate(self, policy_input: PolicyInput) -> DecisionResult:
-        raise NotImplementedError(
+        raise NotImplementedError(  # pragma: no cover
             "Evaluator.evaluate is not implemented yet — see tests/test_evaluator.py"
         )
 

@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "AgentInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable agent identifier.",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable agent name.",
+          "title": "Name"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agent build / model version.",
+          "title": "Version"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AgentInfo",
+      "type": "object"
+    },
+    "SessionInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Session identifier.",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "parent_agent_ids": {
+          "description": "Chain of parent agent ids, oldest first. Empty for top-level agents.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Parent Agent Ids",
+          "type": "array"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Session start timestamp. Must be timezone-aware.",
+          "title": "Started At"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "SessionInfo",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "description": "Arguments the agent passed to the tool. Must be JSON-serializable.",
+          "title": "Arguments",
+          "type": "object"
+        },
+        "name": {
+          "description": "Tool name the agent is invoking.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "tool_use_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Provider-specific tool_use id (e.g. Anthropic tool_use block id).",
+          "title": "Tool Use Id"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Input passed to the policy evaluator for a single tool-call decision.",
+  "properties": {
+    "agent": {
+      "$ref": "#/$defs/AgentInfo"
+    },
+    "context": {
+      "additionalProperties": true,
+      "description": "Free-form context (user, tenant, environment, request metadata).",
+      "title": "Context",
+      "type": "object"
+    },
+    "session": {
+      "$ref": "#/$defs/SessionInfo"
+    },
+    "tool": {
+      "$ref": "#/$defs/ToolCall"
+    }
+  },
+  "required": [
+    "agent",
+    "tool",
+    "session"
+  ],
+  "title": "PolicyInput",
+  "type": "object"
+}
