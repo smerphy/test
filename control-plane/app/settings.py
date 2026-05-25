@@ -34,6 +34,18 @@ class Settings(BaseSettings):
 
     structured_logs: bool = Field(default=True)
 
+    # Celery broker + result backend. Default to in-process eager so tests
+    # and `uvicorn` runs don't require Redis. Production: redis://...
+    celery_broker_url: str = Field(default="memory://")
+    celery_result_backend: str = Field(default="cache+memory://")
+    celery_task_always_eager: bool = Field(default=True)
+
+    # OAuth (GitHub). When client_id is unset, /auth/* endpoints 503.
+    github_client_id: str = Field(default="")
+    github_client_secret: str = Field(default="")
+    oauth_redirect_base_url: str = Field(default="http://localhost:8000")
+    session_secret: str = Field(default="dev-only-replace-me")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

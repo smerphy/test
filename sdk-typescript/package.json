@@ -1,0 +1,32 @@
+{
+  "name": "@praetor/sdk",
+  "version": "0.1.0",
+  "description": "Praetor TypeScript SDK: policy-gated tool calls for AI agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" },
+    "./middleware/anthropic": {
+      "import": "./dist/middleware/anthropic.js",
+      "types": "./dist/middleware/anthropic.d.ts"
+    },
+    "./middleware/openai": {
+      "import": "./dist/middleware/openai.js",
+      "types": "./dist/middleware/openai.d.ts"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
