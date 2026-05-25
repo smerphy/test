@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.venv/
+.python-version
+
+# uv
+uv.lock
+
+# Node / pnpm
+node_modules/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Env / local
+.env
+.env.local
+.DS_Store
