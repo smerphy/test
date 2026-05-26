@@ -37,6 +37,35 @@ File: `engine/praetor_engine/bundles/eu_ai_act.praetor`
 | `eu-ai-act-15-redact-credentials` | 15 |
 | `eu-ai-act-16-block-audit-tampering` | 16 |
 
+## Agent abuse patterns (hardening bundle)
+
+File: `engine/praetor_engine/bundles/agent_abuse_patterns.praetor`
+
+A framework-independent hardening bundle. Each rule is cross-tagged
+to the framework controls it satisfies, so compliance reports surface
+it regardless of which framework you're evaluating against.
+
+| Category | Rules |
+| --- | --- |
+| Credential exfil | private key material, AWS / GitHub / Slack token patterns |
+| Credential URLs | redact `?api_key=` / `?password=` / etc., strip basic-auth |
+| SSRF / private nets | cloud metadata endpoints, RFC 1918, localhost, link-local, non-http schemes |
+| PII egress | SSN denial, credit-card PAN redaction |
+| Prod infra mutation | IAM policy/role mutation, destructive DB on prod, `DELETE` without `WHERE` |
+| Audit tampering | CloudTrail / S3-logging tampering, log-group deletion, Praetor self-tampering |
+
+Load it alongside a framework bundle:
+
+```python
+from praetor_engine.bundles import load_bundle
+
+policies = load_bundle("nist_ai_rmf") + load_bundle("agent_abuse_patterns")
+```
+
+Red-team test coverage lives in `engine/tests/test_red_team.py` — one
+synthetic `PolicyInput` per rule, asserting the evaluator returns the
+expected decision.
+
 ## Extending
 
 Add your own policies and tag them with the same `metadata` keys

@@ -13,7 +13,12 @@ from praetor_engine.bundles import (
 class TestListAndPath:
     def test_lists_all_shipped_bundles(self) -> None:
         names = list_bundles()
-        assert set(names) == {"nist_ai_rmf", "iso_42001", "eu_ai_act"}
+        assert set(names) == {
+            "nist_ai_rmf",
+            "iso_42001",
+            "eu_ai_act",
+            "agent_abuse_patterns",
+        }
         # Sorted output for stable CLI display.
         assert names == sorted(names)
 
