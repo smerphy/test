@@ -286,3 +286,244 @@ policies:
     metadata:
       iso_42001: A.8.4
       eu_ai_act: Article-16
+
+  # ------------------------------------------------------------
+  # 7. More credential / API-key patterns
+  # ------------------------------------------------------------
+
+  - id: abuse-approve-openai-anthropic-key
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.body, pattern: '\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b'}
+        - {op: matches, path: tool.arguments.url, pattern: '\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b'}
+    reason: OpenAI / Anthropic API key pattern in tool args — human must confirm
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+      eu_ai_act: Article-15
+
+  - id: abuse-approve-stripe-key
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.body, pattern: '\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{20,}\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{20,}\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{20,}\b'}
+    reason: Stripe API key pattern in tool args — human must confirm
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+
+  - id: abuse-approve-google-api-key
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.body, pattern: '\bAIza[0-9A-Za-z_-]{35}\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '\bAIza[0-9A-Za-z_-]{35}\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '\bAIza[0-9A-Za-z_-]{35}\b'}
+        - {op: matches, path: tool.arguments.url, pattern: '\bAIza[0-9A-Za-z_-]{35}\b'}
+    reason: Google API key pattern in tool args — human must confirm
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+
+  - id: abuse-approve-huggingface-token
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.body, pattern: '\bhf_[A-Za-z0-9]{30,}\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '\bhf_[A-Za-z0-9]{30,}\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '\bhf_[A-Za-z0-9]{30,}\b'}
+    reason: HuggingFace token pattern in tool args — human must confirm
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+
+  - id: abuse-approve-npm-token
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.body, pattern: '\bnpm_[A-Za-z0-9]{30,}\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '\bnpm_[A-Za-z0-9]{30,}\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '\bnpm_[A-Za-z0-9]{30,}\b'}
+    reason: npm token pattern in tool args — human must confirm
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+
+  - id: abuse-approve-jwt-token
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.body, pattern: '\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b'}
+    reason: JWT-shaped token in outbound tool args — human must confirm
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+      eu_ai_act: Article-15
+
+  # ------------------------------------------------------------
+  # 8. Shell injection / RCE patterns
+  # ------------------------------------------------------------
+
+  - id: abuse-deny-reverse-shell-patterns
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.command, pattern: '(?i)(?:\bbash\s+-i\b|/dev/tcp/|\bnc\s+(?:-[a-z]*e[a-z]*)\b|\bncat\s+.*--exec\b|\bsocat\s+.*EXEC:)'}
+        - {op: matches, path: tool.arguments.cmd, pattern: '(?i)(?:\bbash\s+-i\b|/dev/tcp/|\bnc\s+(?:-[a-z]*e[a-z]*)\b|\bncat\s+.*--exec\b|\bsocat\s+.*EXEC:)'}
+        - {op: matches, path: tool.arguments.script, pattern: '(?i)(?:\bbash\s+-i\b|/dev/tcp/|\bnc\s+(?:-[a-z]*e[a-z]*)\b|\bncat\s+.*--exec\b|\bsocat\s+.*EXEC:)'}
+        - {op: matches, path: tool.arguments.code, pattern: '(?i)(?:\bbash\s+-i\b|/dev/tcp/|\bnc\s+(?:-[a-z]*e[a-z]*)\b|\bncat\s+.*--exec\b|\bsocat\s+.*EXEC:)'}
+    reason: reverse-shell signature in tool args
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+      iso_42001: A.8.4
+
+  - id: abuse-deny-curl-pipe-shell
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.command, pattern: '(?i)\b(?:curl|wget)\s+[^|;&]+\|\s*(?:sh|bash|zsh|python\d?|perl|ruby)\b'}
+        - {op: matches, path: tool.arguments.cmd, pattern: '(?i)\b(?:curl|wget)\s+[^|;&]+\|\s*(?:sh|bash|zsh|python\d?|perl|ruby)\b'}
+        - {op: matches, path: tool.arguments.script, pattern: '(?i)\b(?:curl|wget)\s+[^|;&]+\|\s*(?:sh|bash|zsh|python\d?|perl|ruby)\b'}
+    reason: piping remote content into a shell is a classic RCE pattern
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+
+  # ------------------------------------------------------------
+  # 9. Path traversal & sensitive filesystem reads
+  # ------------------------------------------------------------
+
+  - id: abuse-deny-path-traversal
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.path, pattern: '\.\./|\.\.\\'}
+        - {op: matches, path: tool.arguments.file_path, pattern: '\.\./|\.\.\\'}
+        - {op: matches, path: tool.arguments.filename, pattern: '\.\./|\.\.\\'}
+    reason: path-traversal sequence in a filesystem tool argument
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+      iso_42001: A.8.4
+
+  - id: abuse-deny-sensitive-path-read
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.path, pattern: '(?:/etc/(?:passwd|shadow|sudoers|hosts)\b|/root/|/\.ssh/|/proc/(?:self/environ|\d+/cmdline)|/var/run/docker\.sock)'}
+        - {op: matches, path: tool.arguments.file_path, pattern: '(?:/etc/(?:passwd|shadow|sudoers|hosts)\b|/root/|/\.ssh/|/proc/(?:self/environ|\d+/cmdline)|/var/run/docker\.sock)'}
+        - {op: matches, path: tool.arguments.filename, pattern: '(?:/etc/(?:passwd|shadow|sudoers|hosts)\b|/root/|/\.ssh/|/proc/(?:self/environ|\d+/cmdline)|/var/run/docker\.sock)'}
+    reason: agents must not read sensitive system paths
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+      iso_42001: A.8.4
+
+  # ------------------------------------------------------------
+  # 10. Webhook / known exfil destinations
+  # ------------------------------------------------------------
+
+  - id: abuse-deny-known-exfil-webhooks
+    effect: deny
+    when:
+      op: matches
+      path: tool.arguments.url
+      pattern: '(?:discord\.com/api/webhooks/|hooks\.slack\.com/services/|api\.telegram\.org/bot|webhook\.site/)'
+    reason: outbound to a known webhook receiver — likely exfil channel
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+      eu_ai_act: Article-15
+
+  - id: abuse-deny-pastebin-exfil
+    effect: deny
+    when:
+      op: matches
+      path: tool.arguments.url
+      pattern: '(?:pastebin\.com|paste\.bin|hastebin\.com|ghostbin\.com|transfer\.sh|file\.io|anonfiles\.com|tmpfiles\.org|0x0\.st|controlc\.com|paste\.ee|rentry\.co)'
+    reason: outbound to a public paste / file-share service — exfil risk
+    metadata:
+      nist_ai_rmf: MEASURE-2.7
+      eu_ai_act: Article-15
+
+  - id: abuse-deny-tor-onion
+    effect: deny
+    when:
+      op: matches
+      path: tool.arguments.url
+      pattern: '\.onion(?:[/:]|$)'
+    reason: agents must not reach .onion addresses
+    metadata:
+      nist_ai_rmf: GOVERN-1.2
+      eu_ai_act: Article-15
+
+  # ------------------------------------------------------------
+  # 11. Container / Kubernetes destructive operations
+  # ------------------------------------------------------------
+
+  - id: abuse-deny-k8s-destructive
+    effect: deny
+    when:
+      op: matches
+      path: tool.name
+      pattern: '(?i)(?:kubectl[._-](?:delete|drain|cordon|exec)|helm[._-]uninstall|kubectl[._-]scale.*--replicas=0)'
+    reason: agents must not run destructive Kubernetes operations
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+      iso_42001: A.5.2
+
+  - id: abuse-deny-docker-privileged
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.command, pattern: '(?:--privileged|--cap-add=SYS_ADMIN|--pid=host|--net=host|--ipc=host|-v\s+/:/host)'}
+        - {op: matches, path: tool.arguments.cmd, pattern: '(?:--privileged|--cap-add=SYS_ADMIN|--pid=host|--net=host|--ipc=host|-v\s+/:/host)'}
+        - {op: matches, path: tool.arguments.run_args, pattern: '(?:--privileged|--cap-add=SYS_ADMIN|--pid=host|--net=host|--ipc=host|-v\s+/:/host)'}
+    reason: agents must not launch privileged or host-namespaced containers
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+      iso_42001: A.5.2
+
+  # ------------------------------------------------------------
+  # 12. Permission escalation
+  # ------------------------------------------------------------
+
+  - id: abuse-deny-privilege-escalation
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.name, pattern: '(?i)^sudo|^setuid|setfacl'}
+        - {op: matches, path: tool.arguments.command, pattern: '(?i)(?:\bchmod\s+(?:[0-7]?[4-7][0-7]{2}|\+s\b|u\+s\b)|\busermod\b.*-aG\s+(?:sudo|wheel|admin)|/etc/sudoers|gpasswd\s+-a)'}
+        - {op: matches, path: tool.arguments.cmd, pattern: '(?i)(?:\bchmod\s+(?:[0-7]?[4-7][0-7]{2}|\+s\b|u\+s\b)|\busermod\b.*-aG\s+(?:sudo|wheel|admin)|/etc/sudoers|gpasswd\s+-a)'}
+        - {op: matches, path: tool.arguments.script, pattern: '(?i)(?:\bchmod\s+(?:[0-7]?[4-7][0-7]{2}|\+s\b|u\+s\b)|\busermod\b.*-aG\s+(?:sudo|wheel|admin)|/etc/sudoers|gpasswd\s+-a)'}
+    reason: privilege-escalation primitive in a tool call
+    metadata:
+      nist_ai_rmf: MANAGE-2.1
+      iso_42001: A.5.2
+
+  # ------------------------------------------------------------
+  # 13. Crypto wallet addresses (possible laundering / theft)
+  # ------------------------------------------------------------
+
+  - id: abuse-approve-crypto-wallet-in-args
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.body, pattern: '(?:\bbc1[a-zA-HJ-NP-Z0-9]{25,87}\b|\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b|\b0x[a-fA-F0-9]{40}\b)'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?:\bbc1[a-zA-HJ-NP-Z0-9]{25,87}\b|\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b|\b0x[a-fA-F0-9]{40}\b)'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?:\bbc1[a-zA-HJ-NP-Z0-9]{25,87}\b|\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b|\b0x[a-fA-F0-9]{40}\b)'}
+        - {op: matches, path: tool.arguments.recipient, pattern: '(?:\bbc1[a-zA-HJ-NP-Z0-9]{25,87}\b|\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b|\b0x[a-fA-F0-9]{40}\b)'}
+    reason: crypto wallet address detected in tool args — human must confirm
+    metadata:
+      nist_ai_rmf: GOVERN-1.1
+      eu_ai_act: Article-15

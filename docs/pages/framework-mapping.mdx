@@ -47,11 +47,17 @@ it regardless of which framework you're evaluating against.
 
 | Category | Rules |
 | --- | --- |
-| Credential exfil | private key material, AWS / GitHub / Slack token patterns |
-| Credential URLs | redact `?api_key=` / `?password=` / etc., strip basic-auth |
+| Credential exfil | private key material; AWS / GitHub / Slack / OpenAI / Anthropic / Stripe / Google / HuggingFace / npm tokens; JWT |
+| Credential URLs | redact `?api_key=` / `?password=` / etc.; strip embedded basic-auth |
 | SSRF / private nets | cloud metadata endpoints, RFC 1918, localhost, link-local, non-http schemes |
 | PII egress | SSN denial, credit-card PAN redaction |
 | Prod infra mutation | IAM policy/role mutation, destructive DB on prod, `DELETE` without `WHERE` |
+| Shell injection / RCE | reverse-shell signatures (`bash -i`, `/dev/tcp/`, `nc -e`, `socat EXEC:`); `curl … \| sh` |
+| Path traversal | `../` sequences; reads of `/etc/passwd`, `/etc/shadow`, `~/.ssh`, `/proc/*/environ`, docker.sock |
+| Exfil destinations | Discord/Slack/Telegram webhooks; pastebin / file-share services; `.onion` |
+| Container / K8s | `kubectl delete/exec/drain`, `helm uninstall`; `docker run --privileged` / `--pid=host` / `-v /:/host` |
+| Privilege escalation | `chmod +s`, `usermod -aG sudo`, sudoers edits, `gpasswd -a`, sudo tool names |
+| Crypto wallets | BTC (legacy + bech32) and ETH addresses → require approval |
 | Audit tampering | CloudTrail / S3-logging tampering, log-group deletion, Praetor self-tampering |
 
 Load it alongside a framework bundle:
