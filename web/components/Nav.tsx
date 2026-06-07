@@ -1,7 +1,12 @@
 import Link from "next/link";
 
-const LINKS: { href: "/" | "/policies" | "/audit" | "/approvals" | "/compliance"; label: string }[] = [
+const LINKS: {
+  href: "/" | "/monitoring" | "/alerts" | "/policies" | "/audit" | "/approvals" | "/compliance";
+  label: string;
+}[] = [
   { href: "/", label: "Dashboard" },
+  { href: "/monitoring", label: "Monitoring" },
+  { href: "/alerts", label: "Alerts" },
   { href: "/policies", label: "Policies" },
   { href: "/audit", label: "Audit" },
   { href: "/approvals", label: "Approvals" },

@@ -1,0 +1,165 @@
+# Claude monitoring & alerting
+
+Praetor captures one telemetry event per Claude API call and runs
+threshold alert rules over rolling windows. The pipeline is
+end-to-end:
+
+```
+Your agent
+  └─ AnthropicMonitor.messages.create(...)
+       ├─ call Anthropic
+       ├─ extract usage + cost + stop_reason
+       └─ ship MetricEvent → control plane
+              └─ /metrics/events
+                  ├─ store, index on (org, time/model/agent/status)
+                  └─ Celery beat triggers evaluate_all_alerts_task
+                        └─ each AlertRule
+                             └─ if threshold crossed: route to Slack / PD / webhook
+```
+
+## Capturing metrics in Python
+
+```python
+from anthropic import Anthropic
+from praetor import AnthropicMonitor, ControlPlaneMetricSink
+import os
+
+sink = ControlPlaneMetricSink(
+    os.environ["PRAETOR_CONTROL_PLANE_URL"],
+    api_key=os.environ["PRAETOR_API_KEY"],
+    org_slug=os.environ["PRAETOR_ORG_SLUG"],
+    batch_size=50,
+)
+monitor = AnthropicMonitor(
+    Anthropic(),
+    agent_id="research-bot",
+    sink=sink,
+)
+
+# Drop-in for `client.messages.create(...)`. Extracts tokens, cost,
+# stop_reason, request_id, tools_used from the response. Errors are
+# captured as `status="error"` then re-raised.
+response = monitor.messages.create(
+    model="claude-opus-4-7",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "hi"}],
+    praetor_session_id=session_id,        # optional, threaded through
+    praetor_metadata={"trace_id": trace}, # optional, attached to event
+)
+```
+
+## MetricEvent shape
+
+| Field | Notes |
+| --- | --- |
+| `timestamp` | When the call happened (UTC) |
+| `agent_id` / `session_id` | From the monitor / per-call kwarg |
+| `model` / `operation` | e.g. `claude-opus-4-7` / `messages.create` |
+| `request_id` | Anthropic `_request_id` or `id` |
+| `duration_ms` | Wall time of the SDK call |
+| `input_tokens` / `output_tokens` | From `response.usage` |
+| `cache_read_tokens` / `cache_write_tokens` | Prompt-cache counters |
+| `cost_usd` | SDK computes via the bundled price book (override via env) |
+| `status` | `success` / `error` / `rate_limited` |
+| `stop_reason` | `end_turn` / `tool_use` / `max_tokens` / … |
+| `tools_used` | Names of any `tool_use` content blocks |
+| `error_type` | Exception class name on failure |
+| `metadata` | Free-form |
+
+## Price book
+
+The SDK ships a default Claude price book. Override with your contract
+pricing via `PRAETOR_CLAUDE_PRICE_BOOK_JSON` (set on both the SDK
+process and the control plane):
+
+```bash
+export PRAETOR_CLAUDE_PRICE_BOOK_JSON='{
+  "claude-opus-4-7": {
+    "input": 12.0, "output": 60.0,
+    "cache_read": 1.2, "cache_write": 15.0
+  }
+}'
+```
+
+Whatever the SDK ships as `cost_usd` is authoritative; the control
+plane only falls back to lookup when the SDK ships zero.
+
+## Alert rules
+
+A rule = "aggregate `metric` over the last `window_minutes`, optionally
+grouped by `model`/`agent_id`/`project_id`; fire if `agg comparison
+threshold`". Routed to one channel.
+
+```json
+{
+  "name": "Opus cost spike",
+  "metric": "cost_usd",
+  "aggregation": "sum",
+  "window_minutes": 15,
+  "threshold": 50,
+  "comparison": "gt",
+  "group_by": "model",
+  "filter_model": "claude-opus-4-7",
+  "severity": "warning",
+  "channel": "slack",
+  "target": "https://hooks.slack.com/services/T0/B0/x",
+  "cooldown_minutes": 30
+}
+```
+
+### Metrics
+
+`cost_usd` · `input_tokens` · `output_tokens` · `total_tokens` ·
+`duration_ms` · `request_count` · `error_count` · `error_rate` ·
+`deny_count`
+
+### Aggregations
+
+`sum` · `avg` · `p50` · `p95` · `p99` · `max` · `count` · `rate`
+(special: `error_rate` is computed as `errors / total` per group)
+
+### Channels
+
+- **Slack** — `target` is a Slack incoming-webhook URL. Payload uses
+  blocks (header + detail + context line).
+- **PagerDuty** — `target` is the Events API v2 routing key. Dedup
+  key is `praetor:<rule_id>:<group_key>` so re-firings collapse.
+- **Webhook** — `target` is any URL. Body is the raw rule + event JSON.
+- **Email** — interface only; bundle SES/SMTP yourself.
+
+### Failure semantics
+
+Delivery is best-effort with structured error capture. A 5xx from
+Slack/PagerDuty/your webhook does **not** raise — the `AlertEvent`
+gets `delivered=False` + `delivery_error="<exception>"` and surfaces
+in the Alerts inbox UI. Cooldown still applies to suppress duplicate
+firings while you fix the receiver.
+
+## Scheduling
+
+In production, schedule `evaluate_all_alerts_task` via Celery beat
+every 60s (or your preferred cadence):
+
+```python
+from celery.schedules import crontab
+celery_app.conf.beat_schedule = {
+    "praetor-alerts-every-60s": {
+        "task": "praetor.alerts.evaluate_all",
+        "schedule": 60.0,
+    },
+}
+```
+
+In dev / tests, `PRAETOR_CELERY_TASK_ALWAYS_EAGER=true` is the
+default and rules can be evaluated synchronously via
+`POST /alerts/rules/{id}/evaluate`.
+
+## UI
+
+- **Dashboard** (`/`) — 24h cost, request count, avg latency, error
+  rate, recent alert firings.
+- **Monitoring** (`/monitoring`) — per-model breakdown table, mini
+  sparklines for cost / tokens / requests / errors.
+- **Alerts** (`/alerts`) — create a rule via form, list existing
+  rules with a "evaluate now" button, see firing history with
+  delivery status.

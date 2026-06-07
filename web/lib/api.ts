@@ -159,4 +159,98 @@ export const api = {
     period_end: string;
   }) =>
     call<ComplianceReport>("/reports/compliance", { method: "POST", body }),
+
+  aggregateMetrics: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    const path = qs.toString()
+      ? `/metrics/aggregate?${qs.toString()}`
+      : "/metrics/aggregate";
+    return call<MetricAggregateResponse>(path);
+  },
+  listAlertRules: () => call<AlertRule[]>("/alerts/rules"),
+  createAlertRule: (body: Partial<AlertRule>) =>
+    call<AlertRule>("/alerts/rules", { method: "POST", body }),
+  evaluateAlertRule: (id: string) =>
+    call<AlertEvent[]>(`/alerts/rules/${id}/evaluate`, { method: "POST" }),
+  listAlertEvents: (limit = 100) =>
+    call<AlertEvent[]>(`/alerts/events?limit=${limit}`),
 };
+
+export interface MetricBucket {
+  bucket_start: string;
+  request_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  error_count: number;
+  avg_duration_ms: number;
+}
+
+export interface MetricAggregateResponse {
+  bucket_size_minutes: number;
+  group_by: string | null;
+  buckets: MetricBucket[];
+  by_group: Record<string, MetricBucket[]>;
+}
+
+export type AlertMetric =
+  | "cost_usd"
+  | "input_tokens"
+  | "output_tokens"
+  | "total_tokens"
+  | "duration_ms"
+  | "request_count"
+  | "error_count"
+  | "error_rate"
+  | "deny_count";
+
+export type AlertAggregation =
+  | "sum" | "avg" | "p50" | "p95" | "p99" | "max" | "count" | "rate";
+
+export type AlertComparison = "gt" | "gte" | "lt" | "lte";
+
+export type AlertSeverity = "info" | "warning" | "critical";
+
+export type AlertChannel = "slack" | "pagerduty" | "webhook" | "email";
+
+export type AlertState = "firing" | "resolved";
+
+export interface AlertRule {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  metric: AlertMetric;
+  aggregation: AlertAggregation;
+  window_minutes: number;
+  threshold: number;
+  comparison: AlertComparison;
+  group_by: string | null;
+  filter_model: string | null;
+  filter_agent_id: string | null;
+  severity: AlertSeverity;
+  channel: AlertChannel;
+  target: string;
+  cooldown_minutes: number;
+  last_evaluated_at: string | null;
+  created_at: string;
+}
+
+export interface AlertEvent {
+  id: string;
+  organization_id: string;
+  rule_id: string;
+  fired_at: string;
+  resolved_at: string | null;
+  state: AlertState;
+  metric_value: number;
+  threshold: number;
+  group_key: string | null;
+  delivered: boolean;
+  delivery_error: string | null;
+}

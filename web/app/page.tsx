@@ -1,49 +1,65 @@
+import Link from "next/link";
 import { Card, Stat } from "@/components/Card";
-import { DecisionBadge } from "@/components/DecisionBadge";
-import { api, type AuditEvent, type Decision } from "@/lib/api";
+import { api, type AlertEvent, type MetricAggregateResponse } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-function aggregate(events: AuditEvent[]) {
-  const counts: Record<Decision, number> = {
-    allow: 0,
-    deny: 0,
-    transform: 0,
-    require_approval: 0,
-  };
-  const policyCount: Record<string, number> = {};
-  for (const e of events) {
-    counts[e.decision] += 1;
-    if (e.matched_policy_id) {
-      policyCount[e.matched_policy_id] =
-        (policyCount[e.matched_policy_id] ?? 0) + 1;
-    }
+function formatUsd(v: number): string {
+  return v >= 1
+    ? `$${v.toFixed(2)}`
+    : v > 0
+      ? `$${v.toFixed(4)}`
+      : "$0.00";
+}
+
+function aggregate(metrics: MetricAggregateResponse) {
+  let requests = 0;
+  let inputTok = 0;
+  let outputTok = 0;
+  let cost = 0;
+  let errors = 0;
+  let durSum = 0;
+  for (const b of metrics.buckets) {
+    requests += b.request_count;
+    inputTok += b.input_tokens;
+    outputTok += b.output_tokens;
+    cost += b.cost_usd;
+    errors += b.error_count;
+    durSum += b.avg_duration_ms * b.request_count;
   }
-  const top = Object.entries(policyCount)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  return { counts, top };
+  return {
+    requests,
+    inputTok,
+    outputTok,
+    cost,
+    errors,
+    avgDur: requests > 0 ? durSum / requests : 0,
+    errorRate: requests > 0 ? errors / requests : 0,
+  };
 }
 
 export default async function DashboardPage() {
-  let events: AuditEvent[] = [];
+  let metrics: MetricAggregateResponse | null = null;
+  let alerts: AlertEvent[] = [];
   let error: string | null = null;
   try {
-    events = await api.searchAudit({ limit: "500" });
+    metrics = await api.aggregateMetrics({
+      since: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+      bucket_minutes: "60",
+    });
+    alerts = await api.listAlertEvents(10);
   } catch (e) {
     error = (e as Error).message;
   }
 
-  const { counts, top } = aggregate(events);
-  const total = events.length;
-  const denyRate = total ? ((counts.deny / total) * 100).toFixed(1) : "0.0";
+  const agg = metrics ? aggregate(metrics) : null;
 
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1 className="text-2xl font-semibold">Praetor · Claude monitoring</h1>
         <p className="mt-1 text-sm text-foreground/60">
-          Last 500 decisions across all agents.
+          Token usage, cost, latency, error rate, and alert firings — last 24h.
         </p>
       </header>
 
@@ -52,62 +68,107 @@ export default async function DashboardPage() {
           <pre className="font-mono text-xs text-danger">{error}</pre>
         </Card>
       ) : (
-        <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <Stat label="Total decisions" value={total} />
-            <Stat label="Deny rate" value={`${denyRate}%`} />
-            <Stat label="Approvals" value={counts.require_approval} />
-            <Stat label="Transforms" value={counts.transform} />
-          </div>
+        agg && (
+          <>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <Stat label="Requests" value={agg.requests} />
+              <Stat label="Cost (24h)" value={formatUsd(agg.cost)} />
+              <Stat
+                label="Avg latency"
+                value={`${(agg.avgDur / 1000).toFixed(2)}s`}
+              />
+              <Stat
+                label="Error rate"
+                value={`${(agg.errorRate * 100).toFixed(2)}%`}
+              />
+            </div>
 
-          <Card title="Top matched policies">
-            {top.length === 0 ? (
-              <p className="text-sm text-foreground/60">No events yet.</p>
-            ) : (
-              <ul className="space-y-2 font-mono text-sm">
-                {top.map(([id, n]) => (
-                  <li key={id} className="flex justify-between">
-                    <span>{id}</span>
-                    <span className="tabular-nums text-foreground/60">{n}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <Card title="Recent decisions">
-            {events.length === 0 ? (
-              <p className="text-sm text-foreground/60">No events yet.</p>
-            ) : (
-              <table className="w-full text-left font-mono text-xs">
-                <thead className="text-foreground/60">
-                  <tr>
-                    <th className="py-1 pr-3">Timestamp</th>
-                    <th className="py-1 pr-3">Agent</th>
-                    <th className="py-1 pr-3">Tool</th>
-                    <th className="py-1 pr-3">Decision</th>
-                    <th className="py-1">Policy</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.slice(0, 10).map((e) => (
-                    <tr key={e.id} className="border-t border-border/50">
-                      <td className="py-1 pr-3 tabular-nums">
-                        {new Date(e.timestamp).toISOString().slice(0, 19)}
-                      </td>
-                      <td className="py-1 pr-3">{e.agent_id}</td>
-                      <td className="py-1 pr-3">{e.tool_name}</td>
-                      <td className="py-1 pr-3">
-                        <DecisionBadge decision={e.decision} />
-                      </td>
-                      <td className="py-1">{e.matched_policy_id ?? "-"}</td>
+            <Card title="Recent alert firings">
+              {alerts.length === 0 ? (
+                <p className="text-sm text-foreground/60">
+                  No alerts firing.{" "}
+                  <Link href="/alerts" className="text-accent underline">
+                    Create one →
+                  </Link>
+                </p>
+              ) : (
+                <table className="w-full text-left font-mono text-xs">
+                  <thead className="text-foreground/60">
+                    <tr>
+                      <th className="py-1 pr-3">When</th>
+                      <th className="py-1 pr-3">Rule</th>
+                      <th className="py-1 pr-3">Group</th>
+                      <th className="py-1 pr-3 text-right">Value</th>
+                      <th className="py-1 pr-3 text-right">Threshold</th>
+                      <th className="py-1">Delivered</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Card>
-        </>
+                  </thead>
+                  <tbody>
+                    {alerts.map((a) => (
+                      <tr key={a.id} className="border-t border-border/50">
+                        <td className="py-1 pr-3 tabular-nums">
+                          {new Date(a.fired_at).toISOString().slice(11, 19)}
+                        </td>
+                        <td className="py-1 pr-3">{a.rule_id.slice(0, 8)}</td>
+                        <td className="py-1 pr-3">{a.group_key ?? "—"}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums">
+                          {a.metric_value.toFixed(4)}
+                        </td>
+                        <td className="py-1 pr-3 text-right tabular-nums">
+                          {a.threshold}
+                        </td>
+                        <td className="py-1">
+                          {a.delivered ? "ok" : "failed"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <Card title="Tokens (in / out)">
+                <div className="font-mono text-sm">
+                  in: <span className="tabular-nums">{agg.inputTok.toLocaleString()}</span>
+                </div>
+                <div className="font-mono text-sm">
+                  out: <span className="tabular-nums">{agg.outputTok.toLocaleString()}</span>
+                </div>
+              </Card>
+              <Card title="Where to go next">
+                <ul className="space-y-1 text-sm">
+                  <li>
+                    <Link href="/monitoring" className="text-accent underline">
+                      Monitoring →
+                    </Link>{" "}
+                    per-model breakdown, latency, errors
+                  </li>
+                  <li>
+                    <Link href="/alerts" className="text-accent underline">
+                      Alerts →
+                    </Link>{" "}
+                    threshold rules + firing history
+                  </li>
+                  <li>
+                    <Link href="/audit" className="text-accent underline">
+                      Audit →
+                    </Link>{" "}
+                    every policy decision, with filters
+                  </li>
+                </ul>
+              </Card>
+              <Card title="Compliance">
+                <p className="text-sm text-foreground/60">
+                  Generate framework-mapped reports →{" "}
+                  <Link href="/compliance" className="text-accent underline">
+                    open
+                  </Link>
+                </p>
+              </Card>
+            </div>
+          </>
+        )
       )}
     </div>
   );

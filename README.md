@@ -1,12 +1,26 @@
 # Praetor
 
-Runtime policy enforcement for AI agents. Sits between an agent and its
-tools, evaluates a declarative policy on every tool call, and returns
-`allow` · `deny` · `transform` · `require_approval` — with a
-tamper-evident audit log of every decision.
+Enterprise Claude monitoring + alerting + runtime policy enforcement
+for AI agents.
 
-The open-source core (this repo) is the engine, SDKs (Python + TypeScript),
-control plane, and web UI. Licensed Apache 2.0.
+Two complementary subsystems share one control plane:
+
+1. **Monitoring & alerting** — `AnthropicMonitor` wraps your
+   `anthropic.Anthropic` client and ships a metric event per Claude API
+   call (model, tokens, cache tokens, latency, cost, stop reason,
+   tools used, errors). The control plane stores them, exposes a
+   dashboard, and evaluates threshold **alert rules** (cost spikes,
+   p99 latency, error rate, per-model breakdowns) routed to Slack,
+   PagerDuty, generic webhooks.
+2. **Runtime policy enforcement** — between the model and its tools,
+   evaluates a declarative policy on every tool call and returns
+   `allow` · `deny` · `transform` · `require_approval` with a
+   tamper-evident audit log of every decision. Ships starter
+   compliance bundles for NIST AI RMF, ISO/IEC 42001, EU AI Act, and
+   an `agent_abuse_patterns` hardening bundle (36 rules).
+
+Both layers feed the same audit + reports surface so security, SRE,
+and compliance teams work off one source of truth. Apache 2.0.
 
 ## Layout
 
