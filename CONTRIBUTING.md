@@ -1,86 +1,121 @@
 # Contributing to Praetor
 
-Thanks for your interest in Praetor. The engine and SDKs are Apache 2.0
-licensed; contributions of any size are welcome.
+Thanks for your interest. Praetor is intentionally a small, boring
+stack — most contributions are policy bundles, framework mappings,
+new SDK middlewares, and bug fixes. Larger architectural changes need
+a design discussion in an issue first.
+
+## Scope
+
+In scope:
+- **Engine**: new predicate operators, evaluator perf, type definitions
+- **SDKs** (Python / TypeScript): new provider middlewares, audit-log
+  features, approval-flow improvements
+- **Control plane**: new endpoints, search filters, additional
+  compliance frameworks
+- **Web UI**: missing pages, accessibility fixes
+- **Docs**: clarifications, missing reference material
+- **Compliance bundles**: new starter rules for additional frameworks
+- **Agent-abuse-patterns bundle**: new attack-shape coverage
+
+Not in scope yet (per [the project spec](README.md)):
+- Rust port of the engine
+- Multi-region control plane
+- SSO/SAML (OAuth-only for v0.x)
+- ML-based policy suggestions
+- Hosted-product billing
 
 ## Repo layout
 
-This is a monorepo. Python packages are managed with [uv]
-workspaces; TypeScript / web packages with pnpm workspaces.
+Monorepo. Python packages via [`uv`](https://docs.astral.sh/uv/)
+workspaces, TS / web via pnpm workspaces.
 
 ```
-engine/          # praetor-engine — policy engine (Python)
-sdk-python/      # Python SDK (not yet started)
-sdk-typescript/  # TypeScript SDK (not yet started)
-control-plane/   # FastAPI control plane (not yet started)
-web/             # Next.js UI (not yet started)
+engine/          praetor-engine — policy engine + CLI + bundles
+sdk-python/      praetor — Anthropic/OpenAI middleware, audit, approvals
+sdk-typescript/  @praetor/sdk — TS port of the runtime path
+control-plane/   FastAPI service: ingestion, search, approvals, reports
+web/             Next.js 15 control-plane UI
+docs/            Nextra docs site
+examples/        end-to-end demo agents
 ```
 
 ## Local setup
 
-You will need `uv` (Python) and `pnpm` (Node) on your `PATH`.
+You need Python 3.11+, Node 22+, `uv`, and `pnpm` on `PATH`.
 
 ```bash
-uv sync --package praetor-engine --extra dev
+# Python workspace
+uv sync --all-packages --all-extras
+
+# TypeScript workspace
+pnpm install
 ```
 
-This creates `.venv/` at the repo root and installs the engine in
-editable mode with its dev dependencies.
-
-## Running the engine checks
-
-All commands below assume your working directory is `engine/`.
+## Running the test matrix
 
 ```bash
-# Tests + coverage gate (matches CI: must be >= 85%)
-uv run pytest --cov=praetor_engine --cov-fail-under=85
+# Python: engine, SDK, control plane
+uv run pytest engine sdk-python control-plane
 
-# Local profiling with pytest-benchmark
-uv run pytest --benchmark-enable --benchmark-only
+# TypeScript: SDK
+pnpm --filter @praetor/sdk test
 
-# Lint
-uv run ruff check praetor_engine tests
-
-# Type-check (strict)
-uv run mypy praetor_engine
-
-# CLI smoke test
-uv run praetor eval \
-  --policy examples/policy.yaml \
-  --input  examples/input.json
+# Builds
+pnpm --filter praetor-web build
+pnpm --filter praetor-docs build
 ```
 
-## Schemas
+Each Python package has its own `pyproject.toml` with strict mypy +
+ruff. CI runs the matrix on every PR.
 
-Public Pydantic models export canonical JSON Schemas to
-`engine/schemas/`. When you change a public type, regenerate them:
+## Pull-request checklist
 
-```bash
-uv run praetor-engine-schemas --out engine/schemas/
-```
+- [ ] One logical change per PR. Mixed refactors + features get split
+      on review.
+- [ ] Tests for new behavior. The engine has a Hypothesis property-test
+      pattern; the TS SDK uses Vitest.
+- [ ] `uv run ruff check <pkg>` and `uv run mypy <pkg>` clean.
+- [ ] If you changed the audit-event shape or the predicate AST,
+      regenerate the JSON schemas
+      (`uv run python -m praetor_engine.schema --out engine/schemas/`)
+      and commit the result.
+- [ ] If you added a public symbol, export it from the package's
+      `__init__.py` and document it in `docs/`.
+- [ ] Commit messages explain **why**. We don't squash; readable
+      history matters.
 
-`tests/test_schema_freshness.py` will fail in CI if you forget.
+## Adding a policy to a compliance bundle
 
-## Coding standards
+1. Edit the appropriate `.praetor` file under
+   `engine/praetor_engine/bundles/`.
+2. Tag the rule with the framework control in `metadata` (e.g.
+   `nist_ai_rmf: GOVERN-1.1`) so compliance reports surface it.
+3. Add a red-team test case to `engine/tests/test_red_team.py` (for
+   `agent_abuse_patterns`) or `engine/tests/test_bundles.py`.
+4. Run `praetor validate --policy engine/praetor_engine/bundles/<file>`
+   to confirm it parses.
 
-- Pydantic v2 models, frozen + `extra="forbid"`, types everywhere.
-- mypy strict for `praetor_engine`.
-- ruff (`select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]`) clean.
-- No `print` outside CLI output paths. Structured logging via
-  `structlog` once introduced.
-- Test coverage ≥85% on the engine. Property tests (Hypothesis) for any
-  evaluator behavior that has a stateable invariant.
+## Reporting bugs
 
-## Commit style
+Use GitHub Issues. Include:
 
-- Small, reviewable commits. Tests in the same commit as the code.
-- Imperative subject line ≤72 chars (e.g. "Add transform field to Policy").
-- Reference issues / discussions in the body, not the subject.
+- Praetor version (`pip show praetor-engine`)
+- A minimal reproducing input (`PolicyInput` JSON + bundle YAML)
+- Expected vs. actual decision
 
-## Reporting security issues
+For *security* bugs do **not** open a public issue — see
+[SECURITY.md](SECURITY.md).
 
-Do not file public issues for security vulnerabilities. Email
-`security@praetor.dev` (pending), or open a private security advisory
-on the repo.
+## Code of conduct
 
-[uv]: https://docs.astral.sh/uv/
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
+By participating you agree to abide by it.
+
+## Licensing & DCO
+
+By submitting a contribution you agree to license it under the
+[Apache License 2.0](LICENSE), the same terms as the rest of the
+project. We use DCO-style sign-off: please add
+`Signed-off-by: Your Name <you@example.com>` to your commit
+(`git commit -s`).

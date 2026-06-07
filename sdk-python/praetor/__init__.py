@@ -15,9 +15,19 @@ from praetor.audit import (
 )
 from praetor.client import PraetorClient
 from praetor.errors import ApprovalTimeout, AuditError, PolicyDenied, PraetorError
+from praetor.monitor import (
+    AnthropicMonitor,
+    CallbackMetricSink,
+    ControlPlaneMetricSink,
+    MetricEvent,
+    MetricSink,
+    NullMetricSink,
+    compute_cost_usd,
+)
 from praetor.transport import HttpTransport
 
 __all__ = [
+    "AnthropicMonitor",
     "ApprovalHandler",
     "ApprovalRegistry",
     "ApprovalRequest",
@@ -25,15 +35,21 @@ __all__ = [
     "AuditError",
     "AuditEvent",
     "AuditSink",
+    "CallbackMetricSink",
+    "ControlPlaneMetricSink",
     "HttpTransport",
     "JsonlAuditSink",
+    "MetricEvent",
+    "MetricSink",
     "NullAuditSink",
+    "NullMetricSink",
     "PolicyDenied",
     "PraetorClient",
     "PraetorError",
     "RemoteShipper",
     "Transport",
     "WebhookApprovalHandler",
+    "compute_cost_usd",
     "verify_chain",
 ]
 

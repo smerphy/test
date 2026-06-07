@@ -1,0 +1,115 @@
+"""Claude API metrics: ingestion + search + time-bucketed aggregation."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.auth import current_org
+from app.db import get_session
+from app.models import MetricEvent, Organization
+from app.schemas import (
+    MetricAggregateResponse,
+    MetricEventIn,
+    MetricEventOut,
+    MetricIngestResult,
+)
+from app.services.metrics import aggregate_metrics, ingest_metric
+
+router = APIRouter(tags=["metrics"])
+
+
+@router.post(
+    "/metrics/events",
+    response_model=MetricIngestResult,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def ingest_events(
+    events: list[MetricEventIn],
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> MetricIngestResult:
+    accepted = 0
+    errors: list[str] = []
+    for raw in events:
+        try:
+            ingest_metric(session, org_id=org.id, event=raw)
+            accepted += 1
+        except ValueError as exc:
+            errors.append(f"{raw.agent_id}@{raw.timestamp.isoformat()}: {exc}")
+    return MetricIngestResult(
+        accepted=accepted, rejected=len(events) - accepted, errors=errors
+    )
+
+
+@router.get("/metrics/events", response_model=list[MetricEventOut])
+def search_events(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    model: str | None = None,
+    agent_id: str | None = None,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[MetricEvent]:
+    stmt = (
+        select(MetricEvent)
+        .where(MetricEvent.organization_id == org.id)
+        .order_by(MetricEvent.timestamp.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if model:
+        stmt = stmt.where(MetricEvent.model == model)
+    if agent_id:
+        stmt = stmt.where(MetricEvent.agent_id == agent_id)
+    if status_filter:
+        stmt = stmt.where(MetricEvent.status == status_filter)
+    if since:
+        stmt = stmt.where(MetricEvent.timestamp >= since)
+    if until:
+        stmt = stmt.where(MetricEvent.timestamp <= until)
+    return list(session.execute(stmt).scalars().all())
+
+
+@router.get("/metrics/aggregate", response_model=MetricAggregateResponse)
+def aggregate(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    since: datetime | None = None,
+    until: datetime | None = None,
+    bucket_minutes: Annotated[int, Query(ge=1, le=1440)] = 5,
+    group_by: Annotated[
+        str | None, Query(pattern=r"^(model|agent_id|project_id)$")
+    ] = None,
+    model: str | None = None,
+    agent_id: str | None = None,
+) -> MetricAggregateResponse:
+    now = datetime.now(UTC)
+    if until is None:
+        until = now
+    if since is None:
+        since = until - timedelta(hours=24)
+
+    overall, by_group = aggregate_metrics(
+        session,
+        org_id=org.id,
+        since=since,
+        until=until,
+        bucket_minutes=bucket_minutes,
+        group_by=group_by,
+        filter_model=model,
+        filter_agent_id=agent_id,
+    )
+    return MetricAggregateResponse(
+        bucket_size_minutes=bucket_minutes,
+        group_by=group_by,
+        buckets=overall,
+        by_group=by_group,
+    )

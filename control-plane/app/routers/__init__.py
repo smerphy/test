@@ -1,3 +1,3 @@
-from app.routers import approvals, audit, policies, reports
+from app.routers import alerts, approvals, audit, metrics, policies, reports
 
-__all__ = ["approvals", "audit", "policies", "reports"]
+__all__ = ["alerts", "approvals", "audit", "metrics", "policies", "reports"]

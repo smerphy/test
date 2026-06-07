@@ -78,7 +78,8 @@ pnpm --filter praetor-docs build
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) (TODO).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security disclosures go via
+[SECURITY.md](SECURITY.md).
 
 ## License
 
