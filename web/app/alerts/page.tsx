@@ -53,6 +53,35 @@ async function evaluateRuleAction(formData: FormData): Promise<void> {
   revalidatePath("/alerts");
 }
 
+async function acknowledgeEventAction(formData: FormData): Promise<void> {
+  "use server";
+  await api.acknowledgeAlert(
+    formData.get("event_id") as string,
+    formData.get("by") as string,
+    (formData.get("note") as string) || undefined,
+  );
+  revalidatePath("/alerts");
+}
+
+const STATE_STYLE: Record<string, string> = {
+  firing: "bg-danger/15 text-danger border-danger/40",
+  acknowledged: "bg-warning/15 text-warning border-warning/40",
+  resolved: "bg-success/15 text-success border-success/40",
+};
+
+function StateBadge({ state }: { state: string }) {
+  return (
+    <span
+      className={clsx(
+        "inline-flex items-center rounded border px-2 py-0.5 font-mono text-xs uppercase tracking-wide",
+        STATE_STYLE[state] ?? "bg-muted text-foreground border-border",
+      )}
+    >
+      {state}
+    </span>
+  );
+}
+
 const SEVERITY_STYLE: Record<string, string> = {
   info: "bg-accent/15 text-accent border-accent/40",
   warning: "bg-warning/15 text-warning border-warning/40",
@@ -309,19 +338,23 @@ export default async function AlertsPage() {
             <thead className="text-foreground/60">
               <tr>
                 <th className="py-1 pr-3">Time</th>
+                <th className="py-1 pr-3">State</th>
                 <th className="py-1 pr-3">Rule</th>
                 <th className="py-1 pr-3">Group</th>
                 <th className="py-1 pr-3 text-right">Value</th>
                 <th className="py-1 pr-3 text-right">Threshold</th>
                 <th className="py-1 pr-3">Delivered</th>
-                <th className="py-1">Error</th>
+                <th className="py-1">Ack</th>
               </tr>
             </thead>
             <tbody>
               {events.map((e) => (
-                <tr key={e.id} className="border-t border-border/50">
+                <tr key={e.id} className="border-t border-border/50 align-top">
                   <td className="py-1 pr-3 tabular-nums">
                     {new Date(e.fired_at).toISOString().slice(0, 19)}
+                  </td>
+                  <td className="py-1 pr-3">
+                    <StateBadge state={e.state} />
                   </td>
                   <td className="py-1 pr-3">{e.rule_id.slice(0, 8)}</td>
                   <td className="py-1 pr-3">{e.group_key ?? "—"}</td>
@@ -335,9 +368,32 @@ export default async function AlertsPage() {
                     <span className={clsx(e.delivered ? "text-success" : "text-danger")}>
                       {e.delivered ? "ok" : "fail"}
                     </span>
+                    {e.delivery_error && (
+                      <div className="text-foreground/60">{e.delivery_error}</div>
+                    )}
                   </td>
-                  <td className="py-1 text-foreground/60">
-                    {e.delivery_error ?? ""}
+                  <td className="py-1">
+                    {e.state === "firing" ? (
+                      <form action={acknowledgeEventAction} className="flex gap-1">
+                        <input type="hidden" name="event_id" value={e.id} />
+                        <input
+                          name="by"
+                          placeholder="you@team"
+                          required
+                          className="rounded border border-border bg-background px-1 py-0.5 text-xs"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted"
+                        >
+                          Ack
+                        </button>
+                      </form>
+                    ) : e.acknowledged_by ? (
+                      <span className="text-foreground/60">{e.acknowledged_by}</span>
+                    ) : (
+                      ""
+                    )}
                   </td>
                 </tr>
               ))}

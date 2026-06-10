@@ -335,4 +335,12 @@ class AlertEventOut(BaseModel):
     group_key: str | None
     delivered: bool
     delivery_error: str | None
+    acknowledged_at: datetime | None = None
+    acknowledged_by: str | None = None
+
+
+class AlertAcknowledgeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    acknowledged_by: str = Field(..., min_length=1, max_length=255)
+    note: str | None = None
 

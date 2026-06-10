@@ -17,6 +17,7 @@ from praetor.client import PraetorClient
 from praetor.errors import ApprovalTimeout, AuditError, PolicyDenied, PraetorError
 from praetor.monitor import (
     AnthropicMonitor,
+    AsyncAnthropicMonitor,
     CallbackMetricSink,
     ControlPlaneMetricSink,
     MetricEvent,
@@ -28,6 +29,7 @@ from praetor.transport import HttpTransport
 
 __all__ = [
     "AnthropicMonitor",
+    "AsyncAnthropicMonitor",
     "ApprovalHandler",
     "ApprovalRegistry",
     "ApprovalRequest",

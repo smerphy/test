@@ -433,6 +433,7 @@ class _MessagesProxy:
 
 __all__ = [
     "AnthropicMonitor",
+    "AsyncAnthropicMonitor",
     "CallbackMetricSink",
     "ControlPlaneMetricSink",
     "MetricEvent",
@@ -440,3 +441,244 @@ __all__ = [
     "NullMetricSink",
     "compute_cost_usd",
 ]
+
+
+class _StreamProxy:
+    """Wrap a sync streaming context manager from the Anthropic SDK.
+
+    The Anthropic stream object exposes `.get_final_message()` once the
+    stream is fully consumed; we use that to extract token / cost /
+    stop_reason after the caller exits the `with` block.
+    """
+
+    def __init__(
+        self,
+        underlying_cm: Any,
+        *,
+        monitor: AnthropicMonitor,
+        model: str,
+        session_id: str | None,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        self._cm = underlying_cm
+        self._monitor = monitor
+        self._model = model
+        self._session_id = session_id
+        self._metadata = metadata
+        self._t0: float = 0.0
+        self._stream: Any = None
+        self._exc: BaseException | None = None
+
+    def __enter__(self) -> Any:
+        self._t0 = time.perf_counter()
+        try:
+            self._stream = self._cm.__enter__()
+        except BaseException as exc:
+            duration_ms = int((time.perf_counter() - self._t0) * 1000)
+            self._monitor._record_error(
+                exc,
+                model=self._model,
+                duration_ms=duration_ms,
+                session_id=self._session_id,
+                metadata=self._metadata,
+            )
+            raise
+        return self._stream
+
+    def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> bool | None:
+        self._exc = exc
+        try:
+            result = self._cm.__exit__(exc_type, exc, tb)
+        finally:
+            duration_ms = int((time.perf_counter() - self._t0) * 1000)
+            if self._exc is not None:
+                self._monitor._record_error(
+                    self._exc,
+                    model=self._model,
+                    duration_ms=duration_ms,
+                    session_id=self._session_id,
+                    metadata=self._metadata,
+                )
+            else:
+                final = _safe_get_final_message(self._stream)
+                self._monitor._record_response(
+                    final or {},
+                    model=self._model,
+                    duration_ms=duration_ms,
+                    session_id=self._session_id,
+                    metadata=self._metadata,
+                )
+        return result
+
+
+class _AsyncStreamProxy:
+    """Async counterpart to `_StreamProxy`."""
+
+    def __init__(
+        self,
+        underlying_cm: Any,
+        *,
+        monitor: AsyncAnthropicMonitor,
+        model: str,
+        session_id: str | None,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        self._cm = underlying_cm
+        self._monitor = monitor
+        self._model = model
+        self._session_id = session_id
+        self._metadata = metadata
+        self._t0: float = 0.0
+        self._stream: Any = None
+
+    async def __aenter__(self) -> Any:
+        self._t0 = time.perf_counter()
+        try:
+            self._stream = await self._cm.__aenter__()
+        except BaseException as exc:
+            duration_ms = int((time.perf_counter() - self._t0) * 1000)
+            self._monitor._record_error(
+                exc,
+                model=self._model,
+                duration_ms=duration_ms,
+                session_id=self._session_id,
+                metadata=self._metadata,
+            )
+            raise
+        return self._stream
+
+    async def __aexit__(
+        self, exc_type: Any, exc: BaseException | None, tb: Any
+    ) -> bool | None:
+        try:
+            result = await self._cm.__aexit__(exc_type, exc, tb)
+        finally:
+            duration_ms = int((time.perf_counter() - self._t0) * 1000)
+            if exc is not None:
+                self._monitor._record_error(
+                    exc,
+                    model=self._model,
+                    duration_ms=duration_ms,
+                    session_id=self._session_id,
+                    metadata=self._metadata,
+                )
+            else:
+                final = await _safe_aget_final_message(self._stream)
+                self._monitor._record_response(
+                    final or {},
+                    model=self._model,
+                    duration_ms=duration_ms,
+                    session_id=self._session_id,
+                    metadata=self._metadata,
+                )
+        return result
+
+
+def _safe_get_final_message(stream: Any) -> Any:
+    """`Stream.get_final_message()` is the official sync accessor on the
+    Anthropic SDK. Tolerant fallback: `final_message` attribute, or the
+    stream object itself if it already looks like a Message.
+    """
+    getter = getattr(stream, "get_final_message", None)
+    if callable(getter):
+        try:
+            return getter()
+        except Exception:  # noqa: BLE001
+            return None
+    return getattr(stream, "final_message", None) or stream
+
+
+async def _safe_aget_final_message(stream: Any) -> Any:
+    getter = getattr(stream, "get_final_message", None)
+    if callable(getter):
+        try:
+            result = getter()
+            if hasattr(result, "__await__"):
+                return await result
+            return result
+        except Exception:  # noqa: BLE001
+            return None
+    return getattr(stream, "final_message", None) or stream
+
+
+class _StreamableMessagesProxy(_MessagesProxy):
+    """`messages.create` + `messages.stream` for the sync monitor."""
+
+    def stream(self, **kwargs: Any) -> _StreamProxy:
+        model = kwargs.get("model", "<unknown>")
+        praetor_session_id = kwargs.pop("praetor_session_id", None)
+        praetor_metadata = kwargs.pop("praetor_metadata", None)
+        underlying = self._monitor._client.messages.stream(**kwargs)
+        return _StreamProxy(
+            underlying,
+            monitor=self._monitor,
+            model=model,
+            session_id=praetor_session_id,
+            metadata=praetor_metadata,
+        )
+
+
+# Re-bind the property on AnthropicMonitor to use the streamable variant.
+AnthropicMonitor.messages = property(  # type: ignore[assignment]
+    lambda self: _StreamableMessagesProxy(self),
+)
+
+
+class _AsyncMessagesProxy:
+    """Async version of `_MessagesProxy`. Adds `stream(...)` support."""
+
+    def __init__(self, monitor: AsyncAnthropicMonitor) -> None:
+        self._monitor = monitor
+
+    async def create(self, **kwargs: Any) -> Any:
+        model = kwargs.get("model", "<unknown>")
+        praetor_session_id = kwargs.pop("praetor_session_id", None)
+        praetor_metadata = kwargs.pop("praetor_metadata", None)
+        t0 = time.perf_counter()
+        try:
+            response = await self._monitor._client.messages.create(**kwargs)
+        except Exception as exc:
+            duration_ms = int((time.perf_counter() - t0) * 1000)
+            self._monitor._record_error(
+                exc,
+                model=model,
+                duration_ms=duration_ms,
+                session_id=praetor_session_id,
+                metadata=praetor_metadata,
+            )
+            raise
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        self._monitor._record_response(
+            response,
+            model=model,
+            duration_ms=duration_ms,
+            session_id=praetor_session_id,
+            metadata=praetor_metadata,
+        )
+        return response
+
+    def stream(self, **kwargs: Any) -> _AsyncStreamProxy:
+        model = kwargs.get("model", "<unknown>")
+        praetor_session_id = kwargs.pop("praetor_session_id", None)
+        praetor_metadata = kwargs.pop("praetor_metadata", None)
+        underlying = self._monitor._client.messages.stream(**kwargs)
+        return _AsyncStreamProxy(
+            underlying,
+            monitor=self._monitor,
+            model=model,
+            session_id=praetor_session_id,
+            metadata=praetor_metadata,
+        )
+
+
+class AsyncAnthropicMonitor(AnthropicMonitor):
+    """Async drop-in for `anthropic.AsyncAnthropic`.
+
+    Same recording surface as `AnthropicMonitor`; the only difference
+    is the `messages.create` / `messages.stream` access path uses
+    `await` / `async with`.
+    """
+
+    @property
+    def messages(self) -> _AsyncMessagesProxy:  # type: ignore[override]
+        return _AsyncMessagesProxy(self)

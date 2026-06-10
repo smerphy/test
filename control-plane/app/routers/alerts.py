@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,8 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.auth import current_org
 from app.db import get_session
-from app.models import AlertEvent, AlertRule, Organization
-from app.schemas import AlertEventOut, AlertRuleIn, AlertRuleOut
+from app.models import AlertEvent, AlertRule, AlertState, Organization
+from app.schemas import (
+    AlertAcknowledgeIn,
+    AlertEventOut,
+    AlertRuleIn,
+    AlertRuleOut,
+)
 from app.services.alerts import evaluate_rule
 
 router = APIRouter(tags=["alerts"])
@@ -85,6 +91,37 @@ def evaluate_now(
     if rule is None or rule.organization_id != org.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="rule not found")
     return evaluate_rule(session, rule)
+
+
+@router.post(
+    "/alerts/events/{event_id}/acknowledge", response_model=AlertEventOut
+)
+def acknowledge_event(
+    event_id: str,
+    body: AlertAcknowledgeIn,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> AlertEvent:
+    event = session.get(AlertEvent, event_id)
+    if event is None or event.organization_id != org.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="alert event not found")
+    if event.state is AlertState.RESOLVED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="already resolved; nothing to acknowledge",
+        )
+    event.state = AlertState.ACKNOWLEDGED
+    event.acknowledged_at = datetime.now(UTC)
+    event.acknowledged_by = body.acknowledged_by
+    if body.note:
+        # Append note to the payload for the audit trail.
+        existing = dict(event.payload or {})
+        existing.setdefault("notes", []).append(
+            {"at": event.acknowledged_at.isoformat(), "by": body.acknowledged_by, "text": body.note}
+        )
+        event.payload = existing
+    session.flush()
+    return event
 
 
 @router.get("/alerts/events", response_model=list[AlertEventOut])

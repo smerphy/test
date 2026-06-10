@@ -160,6 +160,11 @@ def evaluate_rule(
 
     rows = list(session.execute(_filter_stmt(rule, since, until)).scalars())
 
+    # Auto-resolve: any firing AlertEvent whose group is no longer above
+    # threshold gets marked resolved. Must run before we re-fire so the
+    # cooldown window of the new firing isn't fooled by a stale one.
+    _auto_resolve_firings(session, rule, rows, now)
+
     if rule.metric is AlertMetric.ERROR_RATE:
         # Special handling: ratio of (error count) / (total count).
         return _eval_error_rate(session, rule, rows, now, http_client)
@@ -192,6 +197,41 @@ def evaluate_rule(
     rule.last_evaluated_at = now
     session.flush()
     return fired
+
+
+def _auto_resolve_firings(
+    session: Session,
+    rule: AlertRule,
+    rows: list[MetricEvent],
+    now: datetime,
+) -> None:
+    """For each currently-firing AlertEvent on this rule, check if the
+    same group is back below threshold; if so, mark resolved.
+
+    Acknowledged firings stay acknowledged — but if they recover, they
+    move from ACKNOWLEDGED to RESOLVED too.
+    """
+    # Build per-group aggregate from the current window.
+    grouped: dict[str | None, list[float]] = {}
+    for ev in rows:
+        key = _group_key(ev, rule.group_by)
+        grouped.setdefault(key, []).append(_select_metric_value(ev, rule.metric))
+
+    open_firings = list(
+        session.execute(
+            select(AlertEvent).where(
+                AlertEvent.rule_id == rule.id,
+                AlertEvent.state.in_([AlertState.FIRING, AlertState.ACKNOWLEDGED]),
+            )
+        ).scalars()
+    )
+    for fire in open_firings:
+        vs = grouped.get(fire.group_key, [])
+        agg = _aggregate(vs, rule.aggregation)
+        if not _compare(agg, rule.threshold, rule.comparison):
+            fire.state = AlertState.RESOLVED
+            fire.resolved_at = now
+    session.flush()
 
 
 def _eval_error_rate(

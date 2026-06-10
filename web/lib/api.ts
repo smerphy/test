@@ -177,6 +177,11 @@ export const api = {
     call<AlertEvent[]>(`/alerts/rules/${id}/evaluate`, { method: "POST" }),
   listAlertEvents: (limit = 100) =>
     call<AlertEvent[]>(`/alerts/events?limit=${limit}`),
+  acknowledgeAlert: (id: string, acknowledged_by: string, note?: string) =>
+    call<AlertEvent>(`/alerts/events/${id}/acknowledge`, {
+      method: "POST",
+      body: { acknowledged_by, note },
+    }),
 };
 
 export interface MetricBucket {
@@ -217,7 +222,7 @@ export type AlertSeverity = "info" | "warning" | "critical";
 
 export type AlertChannel = "slack" | "pagerduty" | "webhook" | "email";
 
-export type AlertState = "firing" | "resolved";
+export type AlertState = "firing" | "acknowledged" | "resolved";
 
 export interface AlertRule {
   id: string;
@@ -253,4 +258,6 @@ export interface AlertEvent {
   group_key: string | null;
   delivered: boolean;
   delivery_error: string | null;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
 }

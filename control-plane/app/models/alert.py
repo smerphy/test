@@ -67,6 +67,7 @@ class AlertChannel(StrEnum):
 
 class AlertState(StrEnum):
     FIRING = "firing"
+    ACKNOWLEDGED = "acknowledged"
     RESOLVED = "resolved"
 
 
@@ -152,6 +153,9 @@ class AlertEvent(IdMixin, TimestampMixin, Base):
     delivered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     delivery_error: Mapped[str | None] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by: Mapped[str | None] = mapped_column(String(255))
 
     __table_args__ = (
         Index("ix_alert_org_fired", "organization_id", "fired_at"),

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.schemas import (
     MetricIngestResult,
 )
 from app.services.metrics import aggregate_metrics, ingest_metric
+from app.services.prometheus_export import render_prometheus
 
 router = APIRouter(tags=["metrics"])
 
@@ -112,4 +113,28 @@ def aggregate(
         group_by=group_by,
         buckets=overall,
         by_group=by_group,
+    )
+
+
+@router.get(
+    "/metrics/prometheus",
+    response_class=Response,
+    responses={200: {"content": {"text/plain": {}}}},
+)
+def prometheus_exposition(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> Response:
+    """Prometheus text exposition format for the calling org.
+
+    Configure your scraper with the X-API-Key + X-Org-Slug headers (or
+    OAuth session). Series exposed: praetor_requests_total,
+    praetor_tokens_total, praetor_cost_usd_total,
+    praetor_request_duration_ms_summary, praetor_alert_rules,
+    praetor_alert_events_total.
+    """
+    body = render_prometheus(session, org_id=org.id)
+    return Response(
+        content=body,
+        media_type="text/plain; version=0.0.4; charset=utf-8",
     )
