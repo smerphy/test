@@ -27,48 +27,10 @@ from typing import Any, Protocol
 
 import httpx
 
-# Per-million-token prices. Override via `PRAETOR_CLAUDE_PRICE_BOOK_JSON`
-# (same format the control plane reads).
-_DEFAULT_PRICES: dict[str, dict[str, float]] = {
-    "claude-opus-4-8": {"input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75},
-    "claude-opus-4-7": {"input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75},
-    "claude-opus-4-6": {"input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75},
-    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75},
-    "claude-sonnet-4-5": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75},
-    "claude-haiku-4-5-20251001": {
-        "input": 0.8, "output": 4.0, "cache_read": 0.08, "cache_write": 1.0,
-    },
-    "claude-haiku-4-5": {"input": 0.8, "output": 4.0, "cache_read": 0.08, "cache_write": 1.0},
-}
-
-
-def _lookup(model: str, book: dict[str, dict[str, float]]) -> dict[str, float] | None:
-    if model in book:
-        return book[model]
-    parts = model.rsplit("-", 1)
-    if len(parts) == 2 and parts[1].isdigit() and parts[0] in book:
-        return book[parts[0]]
-    return None
-
-
-def compute_cost_usd(
-    *,
-    model: str,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
-    cache_read_tokens: int = 0,
-    cache_write_tokens: int = 0,
-    price_book: dict[str, dict[str, float]] | None = None,
-) -> float:
-    prices = _lookup(model, price_book or _DEFAULT_PRICES)
-    if prices is None:
-        return 0.0
-    return (
-        input_tokens * prices.get("input", 0)
-        + output_tokens * prices.get("output", 0)
-        + cache_read_tokens * prices.get("cache_read", 0)
-        + cache_write_tokens * prices.get("cache_write", 0)
-    ) / 1_000_000
+# Price book + cost computation are shared with the control plane via
+# praetor_engine.pricing (one price table, one PRAETOR_CLAUDE_PRICE_BOOK_JSON
+# override read in one place — the SDK previously ignored that env var).
+from praetor_engine.pricing import compute_cost_usd
 
 
 @dataclass(frozen=True)
