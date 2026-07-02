@@ -14,6 +14,7 @@ from app.db import get_session
 from app.deps import get_owned
 from app.models import ApprovalRequest, ApprovalStatus, Organization
 from app.schemas import ApprovalCreateIn, ApprovalRequestOut, ApprovalResolveIn
+from app.workers.tasks import notify_approval_task
 
 router = APIRouter(tags=["approvals"])
 
@@ -43,6 +44,11 @@ def create_approval(
     )
     session.add(approval)
     session.flush()
+    # Commit so the worker (which opens its own session) sees the row, then
+    # enqueue the notification. Eager mode (tests + dev) runs it inline.
+    session.commit()
+    notify_approval_task.delay(approval.id)
+    session.refresh(approval)
     return approval
 
 

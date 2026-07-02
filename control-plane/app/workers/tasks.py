@@ -17,6 +17,7 @@ from app.schemas import AuditEventIn, MetricEventIn
 from app.services.alerts import evaluate_rule
 from app.services.audit_ingest import ingest_event
 from app.services.metrics import ingest_metric
+from app.services.notify import deliver_approval_notification
 from app.services.report import generate_report
 
 
@@ -75,6 +76,13 @@ def generate_report_task(report_id: str) -> None:
         session.commit()
 
 
+@celery_app.task(name="praetor.approvals.notify")
+def notify_approval_task(approval_id: str) -> bool:
+    """Post a pending-approval notification to the org webhook. Best-effort."""
+    with SessionLocal() as session:
+        return deliver_approval_notification(session, approval_id)
+
+
 @celery_app.task(name="praetor.alerts.evaluate_all")
 def evaluate_all_alerts_task() -> dict[str, int]:
     """Evaluate every enabled alert rule across every org.
@@ -101,6 +109,7 @@ def evaluate_all_alerts_task() -> dict[str, int]:
 __all__ = [
     "evaluate_all_alerts_task",
     "generate_report_task",
+    "notify_approval_task",
     "process_audit_batch_task",
     "process_metric_batch_task",
 ]

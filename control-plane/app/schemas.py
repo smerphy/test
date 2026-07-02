@@ -29,6 +29,14 @@ class OrganizationOut(BaseModel):
     id: str
     name: str
     slug: str
+    approval_webhook_url: str | None = None
+
+
+class OrganizationUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Slack-compatible incoming-webhook URL for pending-approval
+    # notifications. Pass null to disable.
+    approval_webhook_url: str | None = Field(default=None, max_length=1024)
 
 
 class ProjectIn(BaseModel):

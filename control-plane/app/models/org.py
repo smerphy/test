@@ -12,6 +12,10 @@ class Organization(IdMixin, TimestampMixin, Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    # Slack-compatible incoming-webhook URL that pending approvals are posted
+    # to. Null = notifications disabled (the dashboard inbox is still the
+    # source of truth).
+    approval_webhook_url: Mapped[str | None] = mapped_column(String(1024))
 
     users: Mapped[list[User]] = relationship(back_populates="organization")
     projects: Mapped[list[Project]] = relationship(back_populates="organization")  # type: ignore[name-defined]  # noqa: F821
