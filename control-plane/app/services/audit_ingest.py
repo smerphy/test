@@ -13,6 +13,7 @@ import hashlib
 import json
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import AuditEvent
@@ -22,8 +23,13 @@ GENESIS_HASH = "0" * 64
 
 
 def _canonical_hash(payload: dict[str, object]) -> str:
+    # `ensure_ascii=False` matches the SDKs' canonical JSON (the TS SDK emits
+    # raw UTF-8), so an event whose text contains non-ASCII characters
+    # verifies here instead of failing as a false "hash mismatch".
     return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
     ).hexdigest()
 
 
@@ -115,8 +121,21 @@ def ingest_event(
         prev_hash=event.prev_hash,
         hash=event.hash,
     )
+    # The idempotency pre-check above has a TOCTOU gap: a concurrent request
+    # shipping the same event can insert it between our _by_hash lookup and
+    # this flush, so the flush loses the race on the uq_audit_org_hash unique
+    # constraint. Contain the failure in a savepoint and return the winner's
+    # row instead of letting the IntegrityError escape as a 500 (which would
+    # make an at-least-once shipper retry the duplicate forever).
     session.add(row)
-    session.flush()
+    try:
+        with session.begin_nested():
+            session.flush()
+    except IntegrityError:
+        existing = _by_hash(session, org_id=org_id, hash_=event.hash)
+        if existing is not None:
+            return existing
+        raise
     return row
 
 

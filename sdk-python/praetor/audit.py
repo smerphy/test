@@ -80,9 +80,19 @@ def _canonical_bytes_for_hashing(event_minus_hash: dict[str, Any]) -> bytes:
     rather than over the in-memory model means cross-language chain
     verification works as long as both writers use the same canonical
     timestamp / scalar serialization.
+
+    `ensure_ascii=False` is required for cross-language parity: the TS SDK's
+    `JSON.stringify` emits raw UTF-8, so a value like `"café"` must hash as
+    UTF-8 here too rather than as an escaped `"caf\\u00e9"`. (One residual
+    gap remains: integral floats — Python `1.0` vs JS `1` — since JS has no
+    int/float distinction; avoid float-valued tool arguments in chains that
+    must verify across languages.)
     """
     return json.dumps(
-        event_minus_hash, sort_keys=True, separators=(",", ":")
+        event_minus_hash,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
     ).encode("utf-8")
 
 
@@ -162,11 +172,14 @@ class JsonlAuditSink:
 
     def __init__(
         self,
-        path: Path,
+        path: Path | str,
         *,
         on_event: Callable[[AuditEvent], None] | None = None,
     ) -> None:
-        self._path = path
+        # Accept a plain string path too — the documented quickstart passes
+        # one — so `JsonlAuditSink("audit.jsonl")` doesn't crash on the first
+        # `.exists()`/`.stat()` call.
+        self._path = Path(path)
         self._lock = threading.Lock()
         self._on_event = on_event
         self._seq, self._prev_hash = self._scan_tail()
@@ -350,7 +363,12 @@ class RemoteShipper:
         """Synchronously ship every event newer than the offset. Returns count shipped."""
         shipped = 0
         for event in self._read_events_after(self._last_acked_seq):
-            self._ship_with_backoff(event)
+            if not self._ship_with_backoff(event):
+                # Shutting down before this event was acked. Do NOT advance
+                # the offset, or the event is dropped: on restart the backlog
+                # scan would begin after it. Leaving the offset put means it
+                # is re-shipped next run (at-least-once).
+                break
             self._last_acked_seq = event.seq
             self._save_offset(event.seq)
             shipped += 1
@@ -374,15 +392,19 @@ class RemoteShipper:
                 if event.seq > seq:
                     yield event
 
-    def _ship_with_backoff(self, event: AuditEvent) -> None:
+    def _ship_with_backoff(self, event: AuditEvent) -> bool:
+        """Ship with exponential backoff. Returns True once acked, or False if
+        we were told to stop before delivery succeeded (caller must not
+        advance the offset in that case)."""
         backoff = self._poll
         while not self._stop.is_set():
             try:
                 self._transport.ship(event)
-                return
+                return True
             except Exception:
                 time.sleep(min(backoff, self._max_backoff))
                 backoff = min(backoff * 2, self._max_backoff)
+        return False
 
 
 __all__ = [

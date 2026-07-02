@@ -47,3 +47,50 @@ class TestLoadBundle:
             policies = load_bundle(name)
             ids = [p.id for p in policies]
             assert len(ids) == len(set(ids)), f"duplicate ids in {name}"
+
+
+class TestEuAiActHumanOverride:
+    """The Art. 14(4)(d) override deny must not fail open on string-encoded
+    boolean flags (a tool serializing `force` as `"true"`)."""
+
+    @pytest.mark.parametrize("force", [True, 1, "true", "TRUE", "yes", "1"])
+    def test_human_override_flag_denied(self, force: object) -> None:
+        from praetor_engine.evaluator import Evaluator
+        from praetor_engine.types import (
+            AgentInfo,
+            Decision,
+            PolicyInput,
+            SessionInfo,
+            ToolCall,
+        )
+
+        evaluator = Evaluator(policies=load_bundle("eu_ai_act"))
+        result = evaluator.evaluate(
+            PolicyInput(
+                agent=AgentInfo(id="a"),
+                tool=ToolCall(name="law_enforcement.search", arguments={"force": force}),
+                session=SessionInfo(id="s"),
+            )
+        )
+        assert result.decision is Decision.DENY
+        assert result.matched_policy_id == "eu-ai-act-14-4d-block-human-override-flag"
+
+    @pytest.mark.parametrize("force", [False, 0, "false", "no", ""])
+    def test_non_override_values_not_denied_by_flag_rule(self, force: object) -> None:
+        from praetor_engine.evaluator import Evaluator
+        from praetor_engine.types import (
+            AgentInfo,
+            PolicyInput,
+            SessionInfo,
+            ToolCall,
+        )
+
+        evaluator = Evaluator(policies=load_bundle("eu_ai_act"))
+        result = evaluator.evaluate(
+            PolicyInput(
+                agent=AgentInfo(id="a"),
+                tool=ToolCall(name="calendar.read", arguments={"force": force}),
+                session=SessionInfo(id="s"),
+            )
+        )
+        assert result.matched_policy_id != "eu-ai-act-14-4d-block-human-override-flag"

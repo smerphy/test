@@ -17,6 +17,7 @@ then re-raised. The monitor never swallows the underlying error.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -161,20 +162,28 @@ class ControlPlaneMetricSink:
         self._batch_size = batch_size
         self._max_buffer = max_buffer
         self._buffer: list[MetricEvent] = []
+        # One monitor commonly wraps a client shared across threads, so
+        # record()/flush() can run concurrently. Guard the buffer so a
+        # batch isn't double-shipped (both threads swap the same list) or
+        # an appended event lost between append and swap.
+        self._lock = threading.Lock()
 
     def record(self, event: MetricEvent) -> None:
-        self._buffer.append(event)
-        if len(self._buffer) > self._max_buffer:
-            # Drop oldest; monitoring data is best-effort.
-            self._buffer = self._buffer[-self._max_buffer:]
-        if len(self._buffer) >= self._batch_size:
+        with self._lock:
+            self._buffer.append(event)
+            if len(self._buffer) > self._max_buffer:
+                # Drop oldest; monitoring data is best-effort.
+                self._buffer = self._buffer[-self._max_buffer:]
+            ready = len(self._buffer) >= self._batch_size
+        if ready:
             self.flush()
 
     def flush(self) -> None:
-        if not self._buffer:
-            return
-        batch = self._buffer
-        self._buffer = []
+        with self._lock:
+            if not self._buffer:
+                return
+            batch = self._buffer
+            self._buffer = []
         try:
             r = self._client.post(
                 self._url,
@@ -184,7 +193,8 @@ class ControlPlaneMetricSink:
             r.raise_for_status()
         except Exception:
             # Re-queue on failure (caller can retry via a fresh call).
-            self._buffer = batch + self._buffer
+            with self._lock:
+                self._buffer = batch + self._buffer
 
 
 def _extract_usage(response: Any) -> dict[str, int]:
@@ -583,7 +593,7 @@ def _safe_get_final_message(stream: Any) -> Any:
     if callable(getter):
         try:
             return getter()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
     return getattr(stream, "final_message", None) or stream
 
@@ -596,7 +606,7 @@ async def _safe_aget_final_message(stream: Any) -> Any:
             if hasattr(result, "__await__"):
                 return await result
             return result
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
     return getattr(stream, "final_message", None) or stream
 

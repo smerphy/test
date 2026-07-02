@@ -65,3 +65,45 @@ def test_api_key_auth_rejects_bad_key_when_keys_configured(
     c.headers.update({"X-Org-Slug": org.slug, "X-API-Key": "good-key"})
     r = c.get("/projects")
     assert r.status_code == 200
+
+
+def test_api_key_cannot_reach_other_org_via_slug(
+    monkeypatch, app, session: Session, org: Organization
+) -> None:
+    """A key bound to one org must not reach another tenant by naming its slug."""
+    from app.settings import get_settings
+
+    rival = Organization(name="Rival", slug="rival")
+    session.add(rival)
+    session.commit()
+
+    s = get_settings()
+    monkeypatch.setattr(s, "api_keys", ["acme-key"])
+    monkeypatch.setattr(s, "api_key_orgs", {"acme-key": "acme"})
+
+    c = TestClient(app)
+    # Naming the rival org with acme's key is a cross-tenant attempt → 403.
+    c.headers.update({"X-API-Key": "acme-key", "X-Org-Slug": "rival"})
+    assert c.get("/projects").status_code == 403
+
+    # Own org still resolves.
+    c.headers.update({"X-API-Key": "acme-key", "X-Org-Slug": "acme"})
+    assert c.get("/projects").status_code == 200
+
+
+def test_unbound_key_rejected_when_multiple_orgs(
+    monkeypatch, app, session: Session, org: Organization
+) -> None:
+    """An unscoped key must not pick an org by slug when several exist."""
+    from app.settings import get_settings
+
+    session.add(Organization(name="Rival", slug="rival"))
+    session.commit()
+
+    s = get_settings()
+    monkeypatch.setattr(s, "api_keys", ["floating-key"])
+    monkeypatch.setattr(s, "api_key_orgs", {})
+
+    c = TestClient(app)
+    c.headers.update({"X-API-Key": "floating-key", "X-Org-Slug": "acme"})
+    assert c.get("/projects").status_code == 403

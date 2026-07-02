@@ -70,8 +70,9 @@ def parse_bundle(text: str) -> list[Policy]:
     return policies
 
 
-def parse_bundle_file(path: Path) -> list[Policy]:
-    return parse_bundle(path.read_text())
+def parse_bundle_file(path: Path | str) -> list[Policy]:
+    # Accept a plain string too — the documented quickstart passes one.
+    return parse_bundle(Path(path).read_text())
 
 
 __all__ = ["PolicyParseError", "parse_bundle", "parse_bundle_file"]

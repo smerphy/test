@@ -75,8 +75,11 @@ class TestGateToolCalls:
         assert decoded["__praetor_blocked__"] is True
         assert decoded["policy_id"] == "deny"
 
-    def test_malformed_json_arguments_treated_as_empty(self) -> None:
-        # OpenAI sometimes streams incomplete JSON; we should not crash.
+    def test_malformed_json_arguments_fail_closed(self) -> None:
+        # OpenAI sometimes streams incomplete JSON. We must not crash, and
+        # must not pass the original (executable) arguments through after
+        # evaluating a coerced empty {} — that would bypass argument-keyed
+        # deny policies. Unparseable arguments are denied.
         call = {
             "id": "x",
             "type": "function",
@@ -94,8 +97,11 @@ class TestGateToolCalls:
             ),
             session_id="s",
         )
-        # Allow path: pass through unchanged.
-        assert out[0] == call
+        import json as _json
+
+        gated_args = _json.loads(out[0]["function"]["arguments"])
+        assert gated_args["__praetor_blocked__"] is True
+        assert gated_args["decision"] == "deny"
 
     def test_missing_function_block_passes_through(self) -> None:
         call = {"id": "x", "type": "function"}

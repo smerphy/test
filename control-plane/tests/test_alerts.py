@@ -246,6 +246,41 @@ class TestEvaluator:
         fired2 = evaluate_rule(session, rule, http_client=_mock_http(202))
         assert fired2 == []  # cooldown active
 
+    def test_cooldown_is_per_group_not_rule_wide(
+        self, session: Session, org: Organization
+    ) -> None:
+        """A firing in one group must not suppress a first breach in another."""
+        base = _past_base()
+        # Only opus is over threshold in the first evaluation.
+        _seed_metrics(
+            session, org, base=base, n=5, model="claude-opus-4-7", cost_usd=0.20
+        )
+        rule = AlertRule(
+            organization_id=org.id,
+            name="cost per model",
+            metric=AlertMetric.COST_USD,
+            aggregation=AlertAggregation.SUM,
+            window_minutes=15,
+            threshold=0.5,
+            comparison=AlertComparison.GT,
+            group_by="model",
+            channel=AlertChannel.WEBHOOK,
+            target="https://example.com/hook",
+            cooldown_minutes=15,
+        )
+        session.add(rule)
+        session.commit()
+        fired1 = evaluate_rule(session, rule, http_client=_mock_http(202))
+        assert [e.group_key for e in fired1] == ["claude-opus-4-7"]
+
+        # Now haiku crosses the threshold. Opus is still in cooldown, but
+        # haiku has never fired and must not be suppressed by opus's firing.
+        _seed_metrics(
+            session, org, base=base, n=5, model="claude-haiku-4-5", cost_usd=0.20
+        )
+        fired2 = evaluate_rule(session, rule, http_client=_mock_http(202))
+        assert [e.group_key for e in fired2] == ["claude-haiku-4-5"]
+
     def test_delivery_error_recorded_not_raised(
         self, session: Session, org: Organization
     ) -> None:

@@ -77,14 +77,30 @@ def gate_tool_use_blocks(
             continue
 
         tool_name = _get(block, "name")
-        tool_input = _get(block, "input", {}) or {}
+        tool_input = _get(block, "input", {})
         tool_use_id = _get(block, "id")
 
-        if not isinstance(tool_name, str):
-            gated.append(block)
+        # Fail closed: if we cannot identify the tool or reliably read the
+        # exact arguments that will execute, deny rather than passing the
+        # call through unevaluated. Evaluating a coerced `{}` and then
+        # emitting the original block would let a malformed or adversarial
+        # response bypass Praetor entirely.
+        if not isinstance(tool_name, str) or not isinstance(tool_input, dict):
+            gated.append(
+                _set_input(
+                    block,
+                    {
+                        **_DENY_INPUT_TEMPLATE,
+                        "policy_id": None,
+                        "reason": (
+                            "unevaluatable tool_use block "
+                            "(missing/invalid name or input)"
+                        ),
+                        "decision": Decision.DENY.value,
+                    },
+                )
+            )
             continue
-        if not isinstance(tool_input, dict):
-            tool_input = {}
 
         result = client.evaluate(
             tool_name=tool_name,

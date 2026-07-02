@@ -65,9 +65,47 @@ def current_org(
     # 2) API-key path (SDKs / CLI).
     _check_api_key(x_api_key, settings)
 
+    # Resolve the organization this key is allowed to act as. A key must
+    # not be able to reach an arbitrary tenant just by naming its slug in
+    # X-Org-Slug — that is a cross-tenant breach.
+    target_slug: str | None
+    if not settings.api_keys:
+        # Dev mode: no keys configured, auth is effectively open (see
+        # _check_api_key). Resolve by the requested slug as before.
+        target_slug = x_org_slug
+    else:
+        bound_slug = settings.api_key_orgs.get(x_api_key or "")
+        if bound_slug is not None:
+            # Key is scoped to one org. A mismatched X-Org-Slug is an attempt
+            # to reach another tenant: reject it.
+            if x_org_slug is not None and x_org_slug != bound_slug:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "API key is not authorized for the requested organization"
+                    ),
+                )
+            target_slug = bound_slug
+        else:
+            # Valid but unbound key. Only safe when the deployment has a
+            # single org; with multiple orgs an unscoped key must not be able
+            # to pick one by slug.
+            first_two = (
+                session.execute(select(Organization).limit(2)).scalars().all()
+            )
+            if len(first_two) > 1:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "API key is not scoped to an organization; "
+                        "configure PRAETOR_API_KEY_ORGS"
+                    ),
+                )
+            target_slug = x_org_slug
+
     stmt = select(Organization)
-    if x_org_slug:
-        stmt = stmt.where(Organization.slug == x_org_slug)
+    if target_slug:
+        stmt = stmt.where(Organization.slug == target_slug)
     org = session.execute(stmt.limit(1)).scalar_one_or_none()
     if org is None:
         raise HTTPException(

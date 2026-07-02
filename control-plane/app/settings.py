@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     # Set via `PRAETOR_API_KEYS=key1,key2` (comma-separated).
     api_keys: list[str] = Field(default_factory=list)
 
+    # Per-key organization binding: maps an API key to the slug of the
+    # single organization it is authorized for. Set via
+    # `PRAETOR_API_KEY_ORGS='{"key1": "acme"}'`. When a key is bound here,
+    # it can only ever resolve to that organization — a mismatched
+    # `X-Org-Slug` header is rejected rather than honored. This is what
+    # closes cross-tenant access for API-key traffic; keys left unbound are
+    # only usable in single-organization deployments.
+    api_key_orgs: dict[str, str] = Field(default_factory=dict)
+
     # Approval webhook callbacks land here; we re-emit to subscribed
     # SDKs via the registry pattern. URL is provided per-org once
     # multi-tenancy is wired in.

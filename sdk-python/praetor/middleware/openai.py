@@ -41,16 +41,28 @@ def _set(obj: Any, attr: str, value: Any) -> Any:
     raise TypeError(f"cannot update field {attr!r} on {type(obj).__name__}")
 
 
-def _parse_arguments(raw: Any) -> dict[str, Any]:
+def _parse_arguments(raw: Any) -> dict[str, Any] | None:
+    """Parse tool-call arguments into a dict.
+
+    Returns `None` when arguments are *present but not a JSON object*
+    (malformed JSON, or a non-object like a list/scalar). The caller must
+    treat `None` as fail-closed: we cannot evaluate the policy against the
+    exact arguments that will execute, so the call is denied rather than
+    evaluated as an empty `{}` and passed through unchanged.
+
+    Absent/empty arguments legitimately mean "no arguments" and parse to `{}`.
+    """
     if isinstance(raw, dict):
         return raw
-    if isinstance(raw, str) and raw:
+    if raw is None or raw == "":
+        return {}
+    if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
 
 
 def gate_tool_calls(
@@ -70,11 +82,22 @@ def gate_tool_calls(
             gated.append(call)
             continue
         tool_name = _get(fn, "name")
-        if not isinstance(tool_name, str):
-            gated.append(call)
-            continue
         arguments = _parse_arguments(_get(fn, "arguments"))
         tool_use_id = _get(call, "id")
+
+        # Fail closed: an unidentifiable tool name, or arguments we cannot
+        # parse into the exact object that will execute, must be denied — not
+        # passed through. Evaluating a coerced `{}` and then emitting the
+        # original call would bypass argument-keyed deny policies.
+        if not isinstance(tool_name, str) or arguments is None:
+            payload = {
+                **_DENY_PAYLOAD,
+                "policy_id": None,
+                "reason": "unevaluatable tool call (invalid name or arguments)",
+                "decision": Decision.DENY.value,
+            }
+            gated.append(_set(call, "function", _set(fn, "arguments", json.dumps(payload))))
+            continue
 
         result = client.evaluate(
             tool_name=tool_name,

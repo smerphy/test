@@ -1,8 +1,8 @@
 """OAuth (GitHub) for human sign-in via the web UI.
 
-On callback we ensure a `User` exists (linked to the first
-Organization, or to a freshly-created one keyed on the user's email
-domain) and store the user id in the session cookie. The session
+On callback we ensure a `User` exists (linked to the Organization for
+their email domain, creating it if none exists) and store the user id
+in the session cookie. The session
 cookie is the auth credential for browser-driven traffic; API keys
 remain the credential for SDK-driven traffic.
 """
@@ -117,11 +117,16 @@ def _upsert_user(session: Session, *, email: str, name: str | None) -> User:
     if user is not None:
         return user
 
-    # New user: link to the first Organization, creating one if none exists.
-    org = session.execute(select(Organization).limit(1)).scalar_one_or_none()
+    # New user: link to the organization for their email domain (so verified
+    # teammates on the same domain share a tenant), creating it if needed.
+    # Never fall back to "the first organization" — that would silently drop
+    # an unrelated user into another company's tenant.
+    domain = email.split("@", 1)[1] if "@" in email else "default"
+    slug = domain.replace(".", "-")
+    org = session.execute(
+        select(Organization).where(Organization.slug == slug)
+    ).scalar_one_or_none()
     if org is None:
-        domain = email.split("@", 1)[1] if "@" in email else "default"
-        slug = domain.replace(".", "-")
         org = Organization(name=domain.capitalize(), slug=slug)
         session.add(org)
         session.flush()
