@@ -17,7 +17,7 @@ from praetor_engine.types import (
     ToolCall,
 )
 
-from praetor.approval import ApprovalHandler
+from praetor.approval import ApprovalHandler, ControlPlaneApprovalHandler
 from praetor.audit import AuditSink, JsonlAuditSink, NullAuditSink, RemoteShipper
 from praetor.errors import PolicyDenied
 from praetor.transport import HttpTransport
@@ -66,8 +66,17 @@ class PraetorClient:
         else:
             self._audit = NullAuditSink()
 
-        self._approval = approval_handler
         self._default_agent_id = default_agent_id
+
+        # Approval handler resolution: an explicit handler wins; otherwise, if
+        # a control plane is configured, default to brokering approvals through
+        # it (create + poll) so `require_approval` actually resolves. With no
+        # handler and no control plane, `require_approval` falls back to deny.
+        self._approval = approval_handler
+        if self._approval is None and control_plane_url is not None:
+            self._approval = ControlPlaneApprovalHandler(
+                control_plane_url, api_key=api_key, org_slug=org_slug
+            )
 
         # Optional control-plane shipping. Requires a local JsonlAuditSink
         # to tail; raise loudly if the caller wired this without one.

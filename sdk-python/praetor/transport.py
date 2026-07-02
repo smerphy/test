@@ -13,6 +13,20 @@ import httpx
 from praetor.audit import AuditEvent
 
 
+def praetor_headers(
+    api_key: str | None, org_slug: str | None
+) -> dict[str, str]:
+    """Build the control-plane auth headers shared by every SDK→control-plane
+    client (audit transport, metric sink, approval handler) so auth wiring
+    lives in one place."""
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["X-API-Key"] = api_key
+    if org_slug:
+        headers["X-Org-Slug"] = org_slug
+    return headers
+
+
 class HttpTransport:
     def __init__(
         self,
@@ -24,11 +38,7 @@ class HttpTransport:
         http_client: httpx.Client | None = None,
     ) -> None:
         self._url = base_url.rstrip("/") + "/audit/events"
-        self._headers: dict[str, str] = {"Content-Type": "application/json"}
-        if api_key:
-            self._headers["X-API-Key"] = api_key
-        if org_slug:
-            self._headers["X-Org-Slug"] = org_slug
+        self._headers = praetor_headers(api_key, org_slug)
         self._client = http_client or httpx.Client(timeout=timeout_seconds)
 
     def ship(self, event: AuditEvent) -> None:
@@ -47,4 +57,4 @@ class HttpTransport:
             )
 
 
-__all__ = ["HttpTransport"]
+__all__ = ["HttpTransport", "praetor_headers"]

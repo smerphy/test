@@ -2,6 +2,7 @@ from praetor.approval import (
     ApprovalHandler,
     ApprovalRegistry,
     ApprovalRequest,
+    ControlPlaneApprovalHandler,
     WebhookApprovalHandler,
 )
 from praetor.audit import (
@@ -38,6 +39,7 @@ __all__ = [
     "AuditEvent",
     "AuditSink",
     "CallbackMetricSink",
+    "ControlPlaneApprovalHandler",
     "ControlPlaneMetricSink",
     "HttpTransport",
     "JsonlAuditSink",

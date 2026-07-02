@@ -13,9 +13,48 @@ from app.auth import current_org
 from app.db import get_session
 from app.deps import get_owned
 from app.models import ApprovalRequest, ApprovalStatus, Organization
-from app.schemas import ApprovalRequestOut, ApprovalResolveIn
+from app.schemas import ApprovalCreateIn, ApprovalRequestOut, ApprovalResolveIn
 
 router = APIRouter(tags=["approvals"])
+
+
+@router.post(
+    "/approvals",
+    response_model=ApprovalRequestOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_approval(
+    body: ApprovalCreateIn,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> ApprovalRequest:
+    """Create a pending approval. Called by the SDK when a policy returns
+    `require_approval`; the SDK then polls `GET /approvals/{id}` for the
+    outcome while a human resolves it in the dashboard."""
+    approval = ApprovalRequest(
+        organization_id=org.id,
+        agent_id=body.agent_id,
+        session_id=body.session_id,
+        tool_name=body.tool_name,
+        tool_arguments=body.tool_arguments,
+        policy_id=body.policy_id,
+        reason=body.reason,
+        status=ApprovalStatus.PENDING,
+    )
+    session.add(approval)
+    session.flush()
+    return approval
+
+
+@router.get("/approvals/{approval_id}", response_model=ApprovalRequestOut)
+def get_approval(
+    approval_id: str,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> ApprovalRequest:
+    return get_owned(
+        session, ApprovalRequest, approval_id, org, detail="approval not found"
+    )
 
 
 @router.get("/approvals", response_model=list[ApprovalRequestOut])

@@ -32,6 +32,8 @@ import httpx
 # override read in one place — the SDK previously ignored that env var).
 from praetor_engine.pricing import compute_cost_usd
 
+from praetor.transport import praetor_headers
+
 
 @dataclass(frozen=True)
 class MetricEvent:
@@ -115,11 +117,7 @@ class ControlPlaneMetricSink:
         http_client: httpx.Client | None = None,
     ) -> None:
         self._url = base_url.rstrip("/") + "/metrics/events"
-        self._headers: dict[str, str] = {"Content-Type": "application/json"}
-        if api_key:
-            self._headers["X-API-Key"] = api_key
-        if org_slug:
-            self._headers["X-Org-Slug"] = org_slug
+        self._headers = praetor_headers(api_key, org_slug)
         self._client = http_client or httpx.Client(timeout=10.0)
         self._batch_size = batch_size
         self._max_buffer = max_buffer
@@ -460,7 +458,7 @@ class _StreamProxy:
     def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> bool | None:
         self._exc = exc
         try:
-            result = self._cm.__exit__(exc_type, exc, tb)
+            result: bool | None = self._cm.__exit__(exc_type, exc, tb)
         finally:
             duration_ms = int((time.perf_counter() - self._t0) * 1000)
             if self._exc is not None:
@@ -523,7 +521,7 @@ class _AsyncStreamProxy:
         self, exc_type: Any, exc: BaseException | None, tb: Any
     ) -> bool | None:
         try:
-            result = await self._cm.__aexit__(exc_type, exc, tb)
+            result: bool | None = await self._cm.__aexit__(exc_type, exc, tb)
         finally:
             duration_ms = int((time.perf_counter() - self._t0) * 1000)
             if exc is not None:

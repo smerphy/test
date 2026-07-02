@@ -66,3 +66,47 @@ def test_cannot_resolve_twice(
 def test_unknown_approval_returns_404(client: TestClient) -> None:
     r = client.post("/approvals/missing/resolve", json={"approved": True})
     assert r.status_code == 404
+
+
+def test_create_then_poll_lifecycle(client: TestClient) -> None:
+    # The SDK path: create a pending approval, poll it, resolve it, poll again.
+    created = client.post(
+        "/approvals",
+        json={
+            "agent_id": "agent-1",
+            "session_id": "sess-1",
+            "tool_name": "http.post",
+            "tool_arguments": {"url": "https://x"},
+            "policy_id": "needs-human",
+            "reason": "payment > $10k",
+        },
+    )
+    assert created.status_code == 201
+    approval_id = created.json()["id"]
+    assert created.json()["status"] == "pending"
+
+    assert client.get(f"/approvals/{approval_id}").json()["status"] == "pending"
+
+    client.post(f"/approvals/{approval_id}/resolve", json={"approved": True})
+    assert client.get(f"/approvals/{approval_id}").json()["status"] == "approved"
+
+
+def test_get_approval_is_org_scoped(
+    client: TestClient, session: Session, org: Organization
+) -> None:
+    other = Organization(name="Other", slug="other")
+    session.add(other)
+    session.commit()
+    foreign = ApprovalRequest(
+        organization_id=other.id,
+        agent_id="a",
+        session_id="s",
+        tool_name="t",
+        tool_arguments={},
+        policy_id=None,
+        reason="r",
+    )
+    session.add(foreign)
+    session.commit()
+    # `client` acts as `acme`; the rival org's approval must not be visible.
+    assert client.get(f"/approvals/{foreign.id}").status_code == 404

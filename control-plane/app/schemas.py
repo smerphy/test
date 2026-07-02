@@ -162,6 +162,16 @@ class AuditIngestResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class ApprovalCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(..., min_length=1, max_length=255)
+    session_id: str = Field(..., min_length=1, max_length=255)
+    tool_name: str = Field(..., min_length=1, max_length=255)
+    tool_arguments: dict[str, Any] = Field(default_factory=dict)
+    policy_id: str | None = None
+    reason: str
+
+
 class ApprovalResolveIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     approved: bool
