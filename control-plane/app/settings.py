@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     celery_result_backend: str = Field(default="cache+memory://")
     celery_task_always_eager: bool = Field(default=True)
 
+    # Slack app signing secret for verifying interactive-component callbacks
+    # (the Approve/Deny buttons POST to /approvals/slack/actions). Unset =
+    # the endpoint 503s. See https://api.slack.com/authentication/verifying-requests-from-slack
+    slack_signing_secret: str = Field(default="")
+
     # OAuth (GitHub). When client_id is unset, /auth/* endpoints 503.
     github_client_id: str = Field(default="")
     github_client_secret: str = Field(default="")

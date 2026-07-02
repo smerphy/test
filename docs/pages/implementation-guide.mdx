@@ -153,6 +153,24 @@ For a single-process setup with no control plane, `WebhookApprovalHandler`
 posts to a Slack webhook and blocks on an in-process `ApprovalRegistry`
 that your own resolver calls.
 
+**Notifications.** Point pending approvals at a Slack (or generic) webhook
+so reviewers are pinged instead of watching the dashboard:
+
+```bash
+curl -X PATCH https://praetor.example.com/org \
+  -H "X-API-Key: cp-xxx" -H "X-Org-Slug: acme" \
+  -d '{"approval_webhook_url": "https://hooks.slack.com/services/…"}'
+```
+
+**Approve/Deny from Slack.** The posted message includes Approve/Deny
+buttons. To make them resolve the request, create a Slack app with
+interactivity enabled, set its Request URL to
+`https://praetor.example.com/approvals/slack/actions`, and set
+`PRAETOR_SLACK_SIGNING_SECRET` on the control plane — the endpoint verifies
+Slack's request signature before resolving. Without the secret the endpoint
+returns 503; resolution via the dashboard (`POST /approvals/{id}/resolve`)
+always works.
+
 ### 3c. Deploy the control plane
 
 ```bash

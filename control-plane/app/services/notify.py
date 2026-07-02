@@ -41,6 +41,23 @@ def build_approval_payload(approval: ApprovalRequest) -> dict[str, Any]:
                     ),
                 },
             },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Approve"},
+                        "style": "primary",
+                        "value": f"approve:{approval.id}",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Deny"},
+                        "style": "danger",
+                        "value": f"deny:{approval.id}",
+                    },
+                ],
+            },
         ],
         "praetor": {
             "approval_id": approval.id,

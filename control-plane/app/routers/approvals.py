@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from datetime import UTC, datetime
 from typing import Annotated
+from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,9 +19,24 @@ from app.db import get_session
 from app.deps import get_owned
 from app.models import ApprovalRequest, ApprovalStatus, Organization
 from app.schemas import ApprovalCreateIn, ApprovalRequestOut, ApprovalResolveIn
+from app.settings import Settings, get_settings
 from app.workers.tasks import notify_approval_task
 
 router = APIRouter(tags=["approvals"])
+
+# Reject Slack callbacks whose signed timestamp is older than this (replay
+# protection), per Slack's guidance.
+_SLACK_MAX_SKEW_SECONDS = 60 * 5
+
+
+def _apply_resolution(
+    approval: ApprovalRequest, *, approved: bool, resolved_by: str | None
+) -> None:
+    approval.status = (
+        ApprovalStatus.APPROVED if approved else ApprovalStatus.DENIED
+    )
+    approval.resolved_at = datetime.now(UTC)
+    approval.resolved_by = resolved_by
 
 
 @router.post(
@@ -98,10 +118,104 @@ def resolve_approval(
             status.HTTP_409_CONFLICT,
             detail=f"approval already {approval.status.value}",
         )
-    approval.status = (
-        ApprovalStatus.APPROVED if body.approved else ApprovalStatus.DENIED
-    )
-    approval.resolved_at = datetime.now(UTC)
-    approval.resolved_by = body.resolved_by
+    _apply_resolution(approval, approved=body.approved, resolved_by=body.resolved_by)
     session.flush()
     return approval
+
+
+def _verify_slack_signature(
+    settings: Settings,
+    raw_body: bytes,
+    signature: str | None,
+    timestamp: str | None,
+) -> None:
+    """Verify Slack's request signature (v0 HMAC-SHA256 over the raw body).
+
+    Raises 503 if no secret is configured, 401 on a missing/stale/invalid
+    signature.
+    """
+    if not settings.slack_signing_secret:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Slack signing secret not configured",
+        )
+    if not signature or not timestamp:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, detail="missing Slack signature"
+        )
+    try:
+        ts = int(timestamp)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, detail="invalid Slack timestamp"
+        ) from exc
+    if abs(time.time() - ts) > _SLACK_MAX_SKEW_SECONDS:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, detail="stale Slack request"
+        )
+    base = b"v0:" + timestamp.encode() + b":" + raw_body
+    digest = hmac.new(
+        settings.slack_signing_secret.encode(), base, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(f"v0={digest}", signature):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, detail="bad Slack signature"
+        )
+
+
+@router.post("/approvals/slack/actions")
+async def slack_actions(
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    x_slack_signature: Annotated[str | None, Header()] = None,
+    x_slack_request_timestamp: Annotated[str | None, Header()] = None,
+) -> dict[str, str]:
+    """Resolve an approval from a Slack Approve/Deny button.
+
+    Authenticated by Slack's request signature (not an org API key), so the
+    approval is located by its unguessable id; the signed payload proves the
+    click came from our Slack app. Returns a message body Slack renders in
+    place of the original buttons.
+    """
+    raw_body = await request.body()
+    _verify_slack_signature(
+        settings, raw_body, x_slack_signature, x_slack_request_timestamp
+    )
+
+    form = parse_qs(raw_body.decode())
+    payload_values = form.get("payload")
+    if not payload_values:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="missing interactive payload"
+        )
+    try:
+        payload = json.loads(payload_values[0])
+        action_value = payload["actions"][0]["value"]
+        verb, approval_id = action_value.split(":", 1)
+    except (json.JSONDecodeError, KeyError, IndexError, ValueError) as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="malformed interactive payload"
+        ) from exc
+    if verb not in ("approve", "deny"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=f"unknown action {verb!r}"
+        )
+
+    user = payload.get("user") or {}
+    resolved_by = f"slack:{user.get('username') or user.get('id') or 'unknown'}"
+
+    approval = session.get(ApprovalRequest, approval_id)
+    if approval is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, detail="approval not found"
+        )
+    if approval.status is not ApprovalStatus.PENDING:
+        # Already resolved (double click, or resolved in the dashboard). Not an
+        # error — tell Slack what happened so the user sees a sensible message.
+        return {"text": f"Already {approval.status.value}."}
+
+    _apply_resolution(approval, approved=verb == "approve", resolved_by=resolved_by)
+    session.flush()
+    outcome = "approved" if verb == "approve" else "denied"
+    return {"text": f"`{approval.tool_name}` {outcome} by {resolved_by}."}
