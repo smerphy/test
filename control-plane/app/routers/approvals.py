@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from urllib.parse import parse_qs
 
@@ -48,10 +48,12 @@ def create_approval(
     body: ApprovalCreateIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> ApprovalRequest:
     """Create a pending approval. Called by the SDK when a policy returns
     `require_approval`; the SDK then polls `GET /approvals/{id}` for the
     outcome while a human resolves it in the dashboard."""
+    expires_at = datetime.now(UTC) + timedelta(minutes=settings.approval_ttl_minutes)
     approval = ApprovalRequest(
         organization_id=org.id,
         agent_id=body.agent_id,
@@ -61,6 +63,7 @@ def create_approval(
         policy_id=body.policy_id,
         reason=body.reason,
         status=ApprovalStatus.PENDING,
+        expires_at=expires_at,
     )
     session.add(approval)
     session.flush()

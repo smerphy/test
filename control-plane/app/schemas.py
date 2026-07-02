@@ -196,6 +196,7 @@ class ApprovalRequestOut(BaseModel):
     policy_id: str | None
     reason: str
     status: ApprovalStatus
+    expires_at: datetime | None
     resolved_at: datetime | None
     resolved_by: str | None
     created_at: datetime

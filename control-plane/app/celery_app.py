@@ -26,5 +26,18 @@ celery_app.conf.update(
     worker_hijack_root_logger=False,
 )
 
+# Periodic tasks — active when `celery -A app.celery_app beat` runs (no effect
+# on eager mode / tests). Both sweeps are idempotent and cheap.
+celery_app.conf.beat_schedule = {
+    "evaluate-alerts": {
+        "task": "praetor.alerts.evaluate_all",
+        "schedule": 60.0,
+    },
+    "expire-stale-approvals": {
+        "task": "praetor.approvals.expire_stale",
+        "schedule": 60.0,
+    },
+}
+
 
 __all__ = ["celery_app"]

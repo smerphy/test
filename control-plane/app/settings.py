@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     celery_result_backend: str = Field(default="cache+memory://")
     celery_task_always_eager: bool = Field(default=True)
 
+    # How long a pending approval lives before the sweep marks it EXPIRED.
+    approval_ttl_minutes: int = Field(default=60)
+
     # Slack app signing secret for verifying interactive-component callbacks
     # (the Approve/Deny buttons POST to /approvals/slack/actions). Unset =
     # the endpoint 503s. See https://api.slack.com/authentication/verifying-requests-from-slack

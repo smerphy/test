@@ -171,6 +171,12 @@ Slack's request signature before resolving. Without the secret the endpoint
 returns 503; resolution via the dashboard (`POST /approvals/{id}/resolve`)
 always works.
 
+**Expiry.** A pending request that no one resolves is swept to `EXPIRED`
+after `PRAETOR_APPROVAL_TTL_MINUTES` (default 60) by the
+`praetor.approvals.expire_stale` beat task, so a crashed agent's request
+doesn't linger and the SDK's poll terminates as a denial. Run the periodic
+sweeps with `celery -A app.celery_app beat` alongside the worker.
+
 ### 3c. Deploy the control plane
 
 ```bash

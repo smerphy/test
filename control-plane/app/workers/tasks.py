@@ -15,6 +15,7 @@ from app.db import SessionLocal
 from app.models import AlertRule, ComplianceReport
 from app.schemas import AuditEventIn, MetricEventIn
 from app.services.alerts import evaluate_rule
+from app.services.approvals import expire_stale_approvals
 from app.services.audit_ingest import ingest_event
 from app.services.metrics import ingest_metric
 from app.services.notify import deliver_approval_notification
@@ -83,6 +84,15 @@ def notify_approval_task(approval_id: str) -> bool:
         return deliver_approval_notification(session, approval_id)
 
 
+@celery_app.task(name="praetor.approvals.expire_stale")
+def expire_stale_approvals_task() -> int:
+    """Sweep expired pending approvals. Schedule via Celery beat (~every 60s)."""
+    with SessionLocal() as session:
+        expired = expire_stale_approvals(session)
+        session.commit()
+    return expired
+
+
 @celery_app.task(name="praetor.alerts.evaluate_all")
 def evaluate_all_alerts_task() -> dict[str, int]:
     """Evaluate every enabled alert rule across every org.
@@ -108,6 +118,7 @@ def evaluate_all_alerts_task() -> dict[str, int]:
 
 __all__ = [
     "evaluate_all_alerts_task",
+    "expire_stale_approvals_task",
     "generate_report_task",
     "notify_approval_task",
     "process_audit_batch_task",
