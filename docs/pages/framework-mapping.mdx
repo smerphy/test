@@ -1,0 +1,81 @@
+# Framework mapping reference
+
+Praetor ships starter bundles for three major AI governance frameworks.
+Each policy in a bundle is tagged via `metadata` with the control(s) it
+satisfies, so compliance reports map policy decisions back to framework
+controls automatically.
+
+## NIST AI Risk Management Framework (AI RMF 1.0)
+
+File: `engine/praetor_engine/bundles/nist_ai_rmf.praetor`
+
+| Policy | Control |
+| --- | --- |
+| `govern-1-1-approve-pii-processors` | GOVERN-1.1 |
+| `govern-1-2-deny-internal-hostnames` | GOVERN-1.2 |
+| `manage-2-1-block-prod-infra-writes` | MANAGE-2.1 |
+| `measure-2-7-redact-secrets-in-urls` | MEASURE-2.7 |
+
+## ISO/IEC 42001:2023
+
+File: `engine/praetor_engine/bundles/iso_42001.praetor`
+
+| Policy | Annex A control |
+| --- | --- |
+| `iso-42001-a5-2-allow-internal-readonly-rag` | A.5.2 |
+| `iso-42001-a6-1-3-approve-external-comms` | A.6.1.3 |
+| `iso-42001-a8-4-block-disabling-audit` | A.8.4 |
+
+## EU AI Act
+
+File: `engine/praetor_engine/bundles/eu_ai_act.praetor`
+
+| Policy | Article |
+| --- | --- |
+| `eu-ai-act-14-4a-pause-high-risk-tools` | 14(4)(a) |
+| `eu-ai-act-14-4d-block-human-override-flag` | 14(4)(d) |
+| `eu-ai-act-15-redact-credentials` | 15 |
+| `eu-ai-act-16-block-audit-tampering` | 16 |
+
+## Agent abuse patterns (hardening bundle)
+
+File: `engine/praetor_engine/bundles/agent_abuse_patterns.praetor`
+
+A framework-independent hardening bundle. Each rule is cross-tagged
+to the framework controls it satisfies, so compliance reports surface
+it regardless of which framework you're evaluating against.
+
+| Category | Rules |
+| --- | --- |
+| Credential exfil | private key material; AWS / GitHub / Slack / OpenAI / Anthropic / Stripe / Google / HuggingFace / npm tokens; JWT |
+| Credential URLs | redact `?api_key=` / `?password=` / etc.; strip embedded basic-auth |
+| SSRF / private nets | cloud metadata endpoints, RFC 1918, localhost, link-local, non-http schemes |
+| PII egress | SSN denial, credit-card PAN redaction |
+| Prod infra mutation | IAM policy/role mutation, destructive DB on prod, `DELETE` without `WHERE` |
+| Shell injection / RCE | reverse-shell signatures (`bash -i`, `/dev/tcp/`, `nc -e`, `socat EXEC:`); `curl … \| sh` |
+| Path traversal | `../` sequences; reads of `/etc/passwd`, `/etc/shadow`, `~/.ssh`, `/proc/*/environ`, docker.sock |
+| Exfil destinations | Discord/Slack/Telegram webhooks; pastebin / file-share services; `.onion` |
+| Container / K8s | `kubectl delete/exec/drain`, `helm uninstall`; `docker run --privileged` / `--pid=host` / `-v /:/host` |
+| Privilege escalation | `chmod +s`, `usermod -aG sudo`, sudoers edits, `gpasswd -a`, sudo tool names |
+| Crypto wallets | BTC (legacy + bech32) and ETH addresses → require approval |
+| Audit tampering | CloudTrail / S3-logging tampering, log-group deletion, Praetor self-tampering |
+
+Load it alongside a framework bundle:
+
+```python
+from praetor_engine.bundles import load_bundle
+
+policies = load_bundle("nist_ai_rmf") + load_bundle("agent_abuse_patterns")
+```
+
+Red-team test coverage lives in `engine/tests/test_red_team.py` — one
+synthetic `PolicyInput` per rule, asserting the evaluator returns the
+expected decision.
+
+## Extending
+
+Add your own policies and tag them with the same `metadata` keys
+(`nist_ai_rmf`, `iso_42001`, `eu_ai_act`). The control plane's report
+renderer treats unknown keys as opaque pass-through metadata, so you
+can also add custom framework keys (e.g. `acme_internal`) and they'll
+surface unchanged.

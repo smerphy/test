@@ -1,0 +1,61 @@
+{
+  "$defs": {
+    "Decision": {
+      "enum": [
+        "allow",
+        "deny",
+        "require_approval",
+        "transform"
+      ],
+      "title": "Decision",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of evaluating a `PolicyInput` against a policy bundle.",
+  "properties": {
+    "decision": {
+      "$ref": "#/$defs/Decision"
+    },
+    "matched_policy_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Id of the policy whose effect was applied. None only for the default-deny case (no policy matched).",
+      "title": "Matched Policy Id"
+    },
+    "reason": {
+      "description": "Human-readable explanation.",
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "suggested_transform": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Replacement tool arguments. Required iff decision == TRANSFORM.",
+      "title": "Suggested Transform"
+    }
+  },
+  "required": [
+    "decision",
+    "reason"
+  ],
+  "title": "DecisionResult",
+  "type": "object"
+}

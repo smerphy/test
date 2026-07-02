@@ -1,0 +1,396 @@
+{
+  "$defs": {
+    "AlwaysPredicate": {
+      "additionalProperties": false,
+      "description": "Vacuous-true predicate. The only way to express an unconditional rule.",
+      "properties": {
+        "op": {
+          "const": "always",
+          "default": "always",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "title": "AlwaysPredicate",
+      "type": "object"
+    },
+    "AndPredicate": {
+      "additionalProperties": false,
+      "properties": {
+        "clauses": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "always": "#/$defs/AlwaysPredicate",
+                "and": "#/$defs/AndPredicate",
+                "eq": "#/$defs/EqPredicate",
+                "in": "#/$defs/InPredicate",
+                "matches": "#/$defs/MatchesPredicate",
+                "not": "#/$defs/NotPredicate",
+                "or": "#/$defs/OrPredicate"
+              },
+              "propertyName": "op"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/EqPredicate"
+              },
+              {
+                "$ref": "#/$defs/InPredicate"
+              },
+              {
+                "$ref": "#/$defs/MatchesPredicate"
+              },
+              {
+                "$ref": "#/$defs/AlwaysPredicate"
+              },
+              {
+                "$ref": "#/$defs/AndPredicate"
+              },
+              {
+                "$ref": "#/$defs/OrPredicate"
+              },
+              {
+                "$ref": "#/$defs/NotPredicate"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Clauses",
+          "type": "array"
+        },
+        "op": {
+          "const": "and",
+          "default": "and",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clauses"
+      ],
+      "title": "AndPredicate",
+      "type": "object"
+    },
+    "Decision": {
+      "enum": [
+        "allow",
+        "deny",
+        "require_approval",
+        "transform"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "EqPredicate": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "eq",
+          "default": "eq",
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "path",
+        "value"
+      ],
+      "title": "EqPredicate",
+      "type": "object"
+    },
+    "InPredicate": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "in",
+          "default": "in",
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "values"
+      ],
+      "title": "InPredicate",
+      "type": "object"
+    },
+    "MatchesPredicate": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "matches",
+          "default": "matches",
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "pattern": {
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "pattern"
+      ],
+      "title": "MatchesPredicate",
+      "type": "object"
+    },
+    "NotPredicate": {
+      "additionalProperties": false,
+      "properties": {
+        "clause": {
+          "discriminator": {
+            "mapping": {
+              "always": "#/$defs/AlwaysPredicate",
+              "and": "#/$defs/AndPredicate",
+              "eq": "#/$defs/EqPredicate",
+              "in": "#/$defs/InPredicate",
+              "matches": "#/$defs/MatchesPredicate",
+              "not": "#/$defs/NotPredicate",
+              "or": "#/$defs/OrPredicate"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/EqPredicate"
+            },
+            {
+              "$ref": "#/$defs/InPredicate"
+            },
+            {
+              "$ref": "#/$defs/MatchesPredicate"
+            },
+            {
+              "$ref": "#/$defs/AlwaysPredicate"
+            },
+            {
+              "$ref": "#/$defs/AndPredicate"
+            },
+            {
+              "$ref": "#/$defs/OrPredicate"
+            },
+            {
+              "$ref": "#/$defs/NotPredicate"
+            }
+          ],
+          "title": "Clause"
+        },
+        "op": {
+          "const": "not",
+          "default": "not",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clause"
+      ],
+      "title": "NotPredicate",
+      "type": "object"
+    },
+    "OrPredicate": {
+      "additionalProperties": false,
+      "properties": {
+        "clauses": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "always": "#/$defs/AlwaysPredicate",
+                "and": "#/$defs/AndPredicate",
+                "eq": "#/$defs/EqPredicate",
+                "in": "#/$defs/InPredicate",
+                "matches": "#/$defs/MatchesPredicate",
+                "not": "#/$defs/NotPredicate",
+                "or": "#/$defs/OrPredicate"
+              },
+              "propertyName": "op"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/EqPredicate"
+              },
+              {
+                "$ref": "#/$defs/InPredicate"
+              },
+              {
+                "$ref": "#/$defs/MatchesPredicate"
+              },
+              {
+                "$ref": "#/$defs/AlwaysPredicate"
+              },
+              {
+                "$ref": "#/$defs/AndPredicate"
+              },
+              {
+                "$ref": "#/$defs/OrPredicate"
+              },
+              {
+                "$ref": "#/$defs/NotPredicate"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Clauses",
+          "type": "array"
+        },
+        "op": {
+          "const": "or",
+          "default": "or",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clauses"
+      ],
+      "title": "OrPredicate",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A single declarative policy.",
+  "properties": {
+    "effect": {
+      "$ref": "#/$defs/Decision"
+    },
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Free-form metadata. Convention: framework control mappings (e.g. {'nist_ai_rmf': 'GOVERN-1.1'}). Carried through to audit logs.",
+      "title": "Metadata",
+      "type": "object"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "transform": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Replacement tool arguments. Required iff effect == TRANSFORM. MVP shape: a static dict; will likely grow into a path/template DSL once we have real workloads to learn from.",
+      "title": "Transform"
+    },
+    "when": {
+      "discriminator": {
+        "mapping": {
+          "always": "#/$defs/AlwaysPredicate",
+          "and": "#/$defs/AndPredicate",
+          "eq": "#/$defs/EqPredicate",
+          "in": "#/$defs/InPredicate",
+          "matches": "#/$defs/MatchesPredicate",
+          "not": "#/$defs/NotPredicate",
+          "or": "#/$defs/OrPredicate"
+        },
+        "propertyName": "op"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/EqPredicate"
+        },
+        {
+          "$ref": "#/$defs/InPredicate"
+        },
+        {
+          "$ref": "#/$defs/MatchesPredicate"
+        },
+        {
+          "$ref": "#/$defs/AlwaysPredicate"
+        },
+        {
+          "$ref": "#/$defs/AndPredicate"
+        },
+        {
+          "$ref": "#/$defs/OrPredicate"
+        },
+        {
+          "$ref": "#/$defs/NotPredicate"
+        }
+      ],
+      "title": "When"
+    }
+  },
+  "required": [
+    "id",
+    "effect",
+    "when",
+    "reason"
+  ],
+  "title": "Policy",
+  "type": "object"
+}

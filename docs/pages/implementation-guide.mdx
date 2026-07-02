@@ -1,0 +1,237 @@
+# Implementation guide
+
+A practical path from "I have an agent" to "every tool call is gated,
+logged, and compliance-mappable."
+
+## 0. Decide your deployment shape
+
+| Mode | What runs | When to pick |
+| --- | --- | --- |
+| **SDK-only** | engine + SDK inside your agent process | single team, no compliance reporting need, JSONL audit on local disk |
+| **SDK + control plane** | adds FastAPI + Postgres + Redis (Celery) | multiple agents, central policy authoring, audit search, approvals inbox, compliance PDFs |
+| **+ Web UI** | adds Next.js control-plane UI | humans (CISO, AI risk officer, eng) interact via browser |
+
+Start at SDK-only; add the control plane when you outgrow `grep` over JSONL.
+
+## 1. Install + first policy (5 min)
+
+```bash
+pip install praetor          # Python SDK (pulls in praetor-engine)
+# or
+pnpm add @praetor/sdk        # TypeScript
+```
+
+Write `bundle.yaml`. Start with your team's allowlist for what tools
+are permitted at all:
+
+```yaml
+policies:
+  - id: allow-public-https-get
+    effect: allow
+    when:
+      op: and
+      clauses:
+        - {op: eq, path: tool.name, value: http.get}
+        - {op: matches, path: tool.arguments.url, pattern: '^https://'}
+    reason: outbound HTTPS reads are allowed
+```
+
+Then merge with shipped bundles in code:
+
+```python
+from praetor_engine.bundles import load_bundle
+from praetor_engine.parser import parse_bundle_file
+
+policies = (
+    parse_bundle_file("bundle.yaml")
+    + load_bundle("nist_ai_rmf")
+    + load_bundle("agent_abuse_patterns")
+)
+```
+
+Verify before shipping:
+
+```bash
+praetor validate --policy bundle.yaml
+praetor eval --policy bundle.yaml --input sample_call.json
+```
+
+## 2. Wire into your agent
+
+### Anthropic (Python)
+
+```python
+from anthropic import Anthropic
+from praetor import PraetorClient
+from praetor.middleware.anthropic import gate_response
+
+praetor = PraetorClient(
+    policies=policies,
+    audit_log_path="/var/lib/praetor/audit.jsonl",
+    default_agent_id="research-bot",
+)
+anthropic = Anthropic()
+
+while not done:
+    response = anthropic.messages.create(model=..., tools=..., messages=...)
+    response = gate_response(response, client=praetor, session_id=session_id)
+    # Denied tool_use blocks carry `__praetor_blocked__` in `input`
+    # so the model can re-plan on the next turn rather than seeing a
+    # silent drop.
+```
+
+### OpenAI / TypeScript
+
+Same shape. Pick `praetor.middleware.openai.gate_tool_calls` in Python
+or import from `@praetor/sdk/middleware/openai` in TS.
+
+## 3. Production hardening
+
+### 3a. Durable audit log + control-plane shipping
+
+```python
+PraetorClient(
+    policies=policies,
+    audit_log_path="/var/lib/praetor/audit.jsonl",
+    control_plane_url="https://praetor.your-company.com",
+    api_key=os.environ["PRAETOR_API_KEY"],
+    org_slug="acme",
+    default_agent_id="research-bot",
+)
+```
+
+The local JSONL is the source of truth. A background `RemoteShipper`
+tails it, POSTs each event to `/audit/events`, and only advances its
+`.offset` sidecar on ack. Network outages are non-fatal — never drops.
+
+Verify the chain at any point:
+
+```bash
+python -c "from pathlib import Path; from praetor import verify_chain; print(verify_chain(Path('audit.jsonl')))"
+```
+
+### 3b. Approvals
+
+Configure a webhook so `require_approval` decisions notify Slack:
+
+```python
+from praetor import ApprovalRegistry, WebhookApprovalHandler
+
+registry = ApprovalRegistry()  # shared across the process
+PraetorClient(
+    ...,
+    approval_handler=WebhookApprovalHandler(
+        webhook_url=os.environ["SLACK_APPROVAL_WEBHOOK"],
+        registry=registry,
+        timeout_seconds=300,
+    ),
+)
+```
+
+The handler blocks until a human clicks Approve/Deny in the
+control-plane UI; the UI's `POST /approvals/{id}/resolve` invokes
+`registry.resolve(...)` and unblocks the agent.
+
+### 3c. Deploy the control plane
+
+```bash
+# control-plane/
+docker run -d postgres:16 ...
+docker run -d redis:7 ...
+
+export PRAETOR_DATABASE_URL=postgresql+psycopg://...
+export PRAETOR_CELERY_BROKER_URL=redis://...
+export PRAETOR_CELERY_TASK_ALWAYS_EAGER=false
+export PRAETOR_API_KEYS=cp-key-1,cp-key-2
+export PRAETOR_SESSION_SECRET=<32 random bytes>
+export PRAETOR_GITHUB_CLIENT_ID=...
+export PRAETOR_GITHUB_CLIENT_SECRET=...
+
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+celery -A app.celery_app worker --loglevel info
+```
+
+Point the web app at it:
+
+```bash
+# web/.env.local
+PRAETOR_CONTROL_PLANE_URL=https://praetor.your-company.com
+PRAETOR_API_KEY=cp-key-1
+PRAETOR_ORG_SLUG=acme
+```
+
+```bash
+pnpm --filter praetor-web build
+pnpm --filter praetor-web start
+```
+
+### 3d. Bootstrap
+
+The first time you start a control plane, no `Organization` exists.
+Either insert one via SQL or sign in with GitHub OAuth — the callback
+handler creates the first org from the user's email domain.
+
+## 4. Policy authoring loop
+
+1. **Write rules in YAML, version them in git** in a `policies/`
+   directory alongside your app code.
+2. **Validate in CI** with `praetor validate --policy bundle.yaml`
+   (exit 64 on parse / shape errors).
+3. **Push versions to the control plane** via
+   `POST /bundles/{id}/versions` — the server re-validates and rejects
+   bad YAML before storing.
+4. **Stage rollouts** at less than 100% (e.g. 25% via
+   `POST /bundles/{id}/rollouts` with `state: staged`) and watch the
+   deny rate on the dashboard before flipping to `active`.
+
+Treat the active policy bundle like a serving config: versioned,
+immutable, with PR review.
+
+## 5. Compliance reporting
+
+```bash
+curl -X POST https://praetor.your-company.com/reports/compliance \
+  -H "X-API-Key: $KEY" -H "X-Org-Slug: acme" \
+  -d '{"framework": "nist_ai_rmf",
+       "period_start": "2026-04-01T00:00:00Z",
+       "period_end":   "2026-05-01T00:00:00Z"}'
+
+curl https://.../reports/compliance/<id>/pdf -o praetor-nist.pdf
+```
+
+The PDF summarizes total decisions, deny rate, approval rate, and
+which framework controls the matched policies satisfy. Hand it to
+your auditor.
+
+## Implementation checklist
+
+```text
+[ ] Pick deployment mode (SDK-only vs +control-plane vs +UI)
+[ ] Write `bundle.yaml` for your team's allowlist
+[ ] Merge with `nist_ai_rmf` (or your framework) + `agent_abuse_patterns`
+[ ] `praetor validate` in CI
+[ ] Construct `PraetorClient` in your agent's startup
+[ ] Wrap response/completion via `gate_response` / `gate_tool_calls`
+[ ] Point `audit_log_path` at a durable location
+[ ] (Optional) Wire `control_plane_url` + `api_key`
+[ ] (Optional) Configure `WebhookApprovalHandler` for human-in-the-loop
+[ ] (Optional) Deploy control plane (Postgres + Redis + Celery + FastAPI + Web)
+[ ] (Optional) Generate compliance PDFs monthly
+```
+
+## What *not* to do
+
+- **Don't customize the engine.** Express your rules in YAML; treat
+  the engine as a black box. Keeps you on the upgrade path.
+- **Don't `deny` everything that looks suspicious.** Prefer
+  `require_approval` where false positives are plausible. Denials cost
+  a model turn and produce worse downstream behavior.
+- **Don't write rules without metadata.** Tag every rule with the
+  framework control(s) it satisfies — that's what makes compliance
+  reports automatic.
+- **Don't disable audit shipping under load.** The local file is
+  durable; the shipper only blocks if you let it fall behind for
+  hours.
+- **Don't share API keys across agents.** Per-agent keys give you
+  per-agent revocation and per-agent attribution in the audit log.

@@ -1,0 +1,66 @@
+# Policy authoring guide
+
+A Praetor policy bundle is a YAML mapping with a top-level `policies`
+key, holding a list of policy objects.
+
+## Policy fields
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Stable identifier; surfaces in audit logs and PR diffs |
+| `effect` | yes | `allow` / `deny` / `transform` / `require_approval` |
+| `when` | yes | Predicate AST (see below) |
+| `reason` | yes | Human-readable; shown to the model on `deny`, to humans on `require_approval` |
+| `transform` | iff `effect: transform` | Dict of replacement arguments |
+| `metadata` | no | Free-form string map. Convention: framework control mapping |
+
+## Predicate AST
+
+Tagged union, dispatched on `op`:
+
+```yaml
+# Equality
+{op: eq, path: tool.name, value: http.get}
+
+# Membership
+{op: in, path: tool.name, values: [http.get, http.post]}
+
+# Regex (Python `re` flavor)
+{op: matches, path: tool.arguments.url, pattern: '^https://'}
+
+# Vacuous
+{op: always}
+
+# Boolean combinators
+{op: and, clauses: [..., ...]}
+{op: or, clauses: [..., ...]}
+{op: not, clause: {...}}
+```
+
+Paths are dotted into the `PolicyInput`. Top-level fields:
+`agent.{id,name,version}`, `tool.{name,arguments.*,tool_use_id}`,
+`session.{id,started_at,parent_agent_ids}`, `context.*`.
+
+## Precedence
+
+When multiple policies match a single input, the highest-precedence
+effect wins:
+
+```
+deny > require_approval > transform > allow
+```
+
+Within a tier, the first policy in declaration order wins. When no
+policy matches, the result is **default deny** (`matched_policy_id`
+is `null` in that case so audit consumers can distinguish "explicit
+deny rule fired" from "nothing matched").
+
+## Authoring tips
+
+- Use `metadata` to map each policy to the framework control(s) it
+  satisfies. The control plane's compliance reports surface this
+  mapping in PDFs.
+- Keep `reason` short and audience-aware. The model sees it on `deny`;
+  humans see it in the approval inbox on `require_approval`.
+- Prefer `transform` to `deny` when the call is acceptable in
+  redacted form — denies cost a model turn.

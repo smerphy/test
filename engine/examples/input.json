@@ -1,0 +1,22 @@
+{
+  "agent": {
+    "id": "research-bot",
+    "name": "Research Bot",
+    "version": "1.0.0"
+  },
+  "tool": {
+    "name": "http.get",
+    "arguments": {
+      "url": "https://example.com/articles/123"
+    },
+    "tool_use_id": "toolu_01"
+  },
+  "session": {
+    "id": "sess-2026-05-25-001",
+    "parent_agent_ids": []
+  },
+  "context": {
+    "tenant_id": "acme",
+    "user_id": "u-42"
+  }
+}

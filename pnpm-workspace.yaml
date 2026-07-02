@@ -1,0 +1,8 @@
+packages:
+  - 'web'
+  - 'sdk-typescript'
+  - 'docs'
+
+onlyBuiltDependencies:
+  - sharp
+  - unrs-resolver
