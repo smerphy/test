@@ -55,6 +55,28 @@ describe("JsonlAuditSink", () => {
     expect(ev.seq).toBe(2);
   });
 
+  it("keeps independent chains per agent/session", () => {
+    const path = join(dir, "audit.jsonl");
+    const sink = new JsonlAuditSink(path);
+    const pi = (agent: string, session: string): PolicyInput => ({
+      agent: { id: agent },
+      tool: { name: "http.get", arguments: { url: "https://x" } },
+      session: { id: session },
+    });
+    const a0 = sink.record(pi("agent-A", "s1"), allow());
+    const b0 = sink.record(pi("agent-B", "s2"), allow());
+    const a1 = sink.record(pi("agent-A", "s1"), allow());
+    const b1 = sink.record(pi("agent-B", "s2"), allow());
+
+    expect([a0.seq, a1.seq]).toEqual([0, 1]);
+    expect([b0.seq, b1.seq]).toEqual([0, 1]); // restarts at 0 per chain
+    expect(a0.prev_hash).toBe(GENESIS_HASH);
+    expect(b0.prev_hash).toBe(GENESIS_HASH);
+    expect(a1.prev_hash).toBe(a0.hash);
+    expect(b1.prev_hash).toBe(b0.hash);
+    expect(verifyChain(path)).toBe(4);
+  });
+
   it("verifyChain accepts a well-formed chain", () => {
     const sink = new JsonlAuditSink(join(dir, "audit.jsonl"));
     for (let i = 0; i < 5; i++) sink.record(input(), allow());

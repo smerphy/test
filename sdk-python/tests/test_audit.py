@@ -51,6 +51,35 @@ class TestJsonlSinkChain:
         assert event.prev_hash == GENESIS_HASH
         assert event.hash != GENESIS_HASH
 
+    def test_independent_chains_per_agent_session(self, tmp_path: Path) -> None:
+        # Two sessions interleaved in one file each get their own chain:
+        # seq restarts at 0 and the first event of each links to genesis.
+        # This is what lets the control plane (which verifies per
+        # (org, agent, session)) ingest the log without a seq mismatch.
+        path = tmp_path / "audit.jsonl"
+        sink = JsonlAuditSink(path)
+
+        def _pi_for(agent: str, session: str) -> PolicyInput:
+            return PolicyInput(
+                agent=AgentInfo(id=agent),
+                tool=ToolCall(name="http.get", arguments={"url": "https://x"}),
+                session=SessionInfo(id=session, started_at=datetime(2026, 1, 1, tzinfo=UTC)),
+            )
+
+        a0 = sink.record(_pi_for("agent-A", "s1"), _allow())
+        b0 = sink.record(_pi_for("agent-B", "s2"), _allow())  # different chain
+        a1 = sink.record(_pi_for("agent-A", "s1"), _allow())
+        b1 = sink.record(_pi_for("agent-B", "s2"), _allow())
+
+        assert (a0.seq, a1.seq) == (0, 1)
+        assert (b0.seq, b1.seq) == (0, 1)  # restarts at 0 for the second chain
+        assert a0.prev_hash == GENESIS_HASH
+        assert b0.prev_hash == GENESIS_HASH  # not chained off agent-A's event
+        assert a1.prev_hash == a0.hash
+        assert b1.prev_hash == b0.hash
+        # The interleaved file verifies as four events across two chains.
+        assert verify_chain(path) == 4
+
     def test_accepts_str_path(self, tmp_path: Path) -> None:
         # The documented quickstart passes a plain string.
         sink = JsonlAuditSink(str(tmp_path / "audit.jsonl"))
@@ -201,7 +230,7 @@ class TestRemoteShipper:
         )
 
         assert shipper.ship_pending() == 2
-        assert shipper.last_acked_seq == 1
+        assert shipper.acked_count == 2
         assert len(transport.shipped) == 2  # type: ignore[attr-defined]
 
     def test_offset_persists_across_restart(self, tmp_path: Path) -> None:
@@ -217,7 +246,7 @@ class TestRemoteShipper:
         sink.record(_pi("net.dns"), _allow())
         transport_b = _CountingTransport()
         new_shipper = RemoteShipper(sink, transport_b, offset_path=offset)
-        assert new_shipper.last_acked_seq == 1
+        assert new_shipper.acked_count == 2
         assert new_shipper.ship_pending() == 1
         assert len(transport_b.shipped) == 1
         assert transport_b.shipped[0].seq == 2
@@ -238,7 +267,7 @@ class TestRemoteShipper:
         )
         shipper.stop()  # signal shutdown before shipping
         assert shipper.ship_pending() == 0
-        assert shipper.last_acked_seq == -1
+        assert shipper.acked_count == 0
         assert len(always_fail.shipped) == 0
 
         # A fresh shipper on the same offset re-ships the undelivered event.

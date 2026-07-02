@@ -63,6 +63,20 @@ def test_ingest_chain_continuity(client: TestClient) -> None:
     assert r.json()["accepted"] == 1
 
 
+def test_ingest_interleaved_sessions_each_own_chain(client: TestClient) -> None:
+    # The SDK writes one file with independent per-(agent, session) chains,
+    # so a shipped batch interleaves sessions and each session's seq restarts
+    # at 0 off genesis. Ingest must verify them as separate chains, not reject
+    # the second session for "seq mismatch: expected 0, got N".
+    a0 = _event(seq=0, prev_hash=GENESIS, agent_id="agent-A", session_id="s1")
+    b0 = _event(seq=0, prev_hash=GENESIS, agent_id="agent-B", session_id="s2")
+    a1 = _event(seq=1, prev_hash=a0["hash"], agent_id="agent-A", session_id="s1")
+    b1 = _event(seq=1, prev_hash=b0["hash"], agent_id="agent-B", session_id="s2")
+    r = client.post("/audit/events", json=[a0, b0, a1, b1])
+    assert r.status_code == 202
+    assert r.json() == {"accepted": 4, "rejected": 0, "errors": []}
+
+
 def test_ingest_broken_prev_hash_rejected(client: TestClient) -> None:
     e0 = _event(seq=0, prev_hash=GENESIS)
     client.post("/audit/events", json=[e0])

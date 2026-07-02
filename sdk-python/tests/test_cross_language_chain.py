@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _write_events_via_ts(out_path: Path, count: int) -> None:
+def _write_events_via_ts(out_path: Path, count: int, *, reason: str = "ok") -> None:
     script = f"""
       import {{ JsonlAuditSink }} from "{TS_DIST_INDEX}";
       const sink = new JsonlAuditSink({out_path.as_posix()!r});
@@ -43,7 +43,7 @@ def _write_events_via_ts(out_path: Path, count: int) -> None:
             tool: {{ name: "http.get", arguments: {{ url: `https://x/${{i}}` }} }},
             session: {{ id: "sess-1" }},
           }},
-          {{ decision: "allow", reason: "ok", matched_policy_id: "p1" }},
+          {{ decision: "allow", reason: {reason!r}, matched_policy_id: "p1" }},
         );
       }}
     """
@@ -58,6 +58,15 @@ def test_python_verifies_ts_written_chain(tmp_path: Path) -> None:
     path = tmp_path / "audit.jsonl"
     _write_events_via_ts(path, count=5)
     assert verify_chain(path) == 5
+
+
+def test_python_verifies_ts_chain_with_non_ascii(tmp_path: Path) -> None:
+    # Regression: Python's canonical JSON used ensure_ascii=True while the TS
+    # SDK emits raw UTF-8, so any non-ASCII event failed Python verification
+    # as a false tamper. Both now canonicalize as UTF-8.
+    path = tmp_path / "audit.jsonl"
+    _write_events_via_ts(path, count=3, reason="café ☕ déjà")
+    assert verify_chain(path) == 3
 
 
 def test_python_detects_ts_chain_tamper(tmp_path: Path) -> None:
