@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import current_org
 from app.db import get_session
+from app.deps import get_owned
 from app.models import ComplianceReport, Organization, ReportStatus
 from app.schemas import ComplianceReportIn, ComplianceReportOut
 from app.services.pdf import render_report_pdf
@@ -70,10 +71,9 @@ def get_report(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> ComplianceReport:
-    report = session.get(ComplianceReport, report_id)
-    if report is None or report.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="report not found")
-    return report
+    return get_owned(
+        session, ComplianceReport, report_id, org, detail="report not found"
+    )
 
 
 @router.get("/reports/compliance/{report_id}/pdf")
@@ -82,9 +82,9 @@ def get_report_pdf(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> Response:
-    report = session.get(ComplianceReport, report_id)
-    if report is None or report.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="report not found")
+    report = get_owned(
+        session, ComplianceReport, report_id, org, detail="report not found"
+    )
     if report.status is not ReportStatus.COMPLETE:
         raise HTTPException(
             status.HTTP_409_CONFLICT,

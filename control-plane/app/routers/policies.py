@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import current_org
 from app.db import get_session
+from app.deps import get_owned
 from app.models import (
     Organization,
     PolicyBundle,
@@ -80,9 +81,7 @@ def create_bundle(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> PolicyBundleOut:
-    project = session.get(Project, project_id)
-    if project is None or project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="project not found")
+    project = get_owned(session, Project, project_id, org, detail="project not found")
     bundle = PolicyBundle(
         project_id=project.id, name=body.name, description=body.description
     )
@@ -99,9 +98,7 @@ def list_bundles(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> list[PolicyBundleOut]:
-    project = session.get(Project, project_id)
-    if project is None or project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="project not found")
+    project = get_owned(session, Project, project_id, org, detail="project not found")
     return [_bundle_out(b) for b in project.bundles]
 
 
@@ -116,9 +113,14 @@ def create_version(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> PolicyVersion:
-    bundle = session.get(PolicyBundle, bundle_id)
-    if bundle is None or bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="bundle not found")
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
 
     try:
         policies = parse_bundle(body.yaml_text)
@@ -154,9 +156,14 @@ def list_versions(
 ) -> list[PolicyVersion]:
     """List versions of a bundle. Omits `yaml_text` for payload sanity;
     fetch one version's full text via `GET /versions/{version_id}`."""
-    bundle = session.get(PolicyBundle, bundle_id)
-    if bundle is None or bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="bundle not found")
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
     return list(bundle.versions)
 
 
@@ -166,9 +173,14 @@ def get_version(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> PolicyVersion:
-    version = session.get(PolicyVersion, version_id)
-    if version is None or version.bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="version not found")
+    version = get_owned(
+        session,
+        PolicyVersion,
+        version_id,
+        org,
+        owner=lambda v: v.bundle.project.organization_id,
+        detail="version not found",
+    )
     return version
 
 
@@ -183,9 +195,14 @@ def create_rollout(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> PolicyRollout:
-    bundle = session.get(PolicyBundle, bundle_id)
-    if bundle is None or bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="bundle not found")
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
     version = session.get(PolicyVersion, body.version_id)
     if version is None or version.bundle_id != bundle.id:
         raise HTTPException(

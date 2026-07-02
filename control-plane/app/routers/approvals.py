@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import current_org
 from app.db import get_session
+from app.deps import get_owned
 from app.models import ApprovalRequest, ApprovalStatus, Organization
 from app.schemas import ApprovalRequestOut, ApprovalResolveIn
 
@@ -44,9 +45,9 @@ def resolve_approval(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> ApprovalRequest:
-    approval = session.get(ApprovalRequest, approval_id)
-    if approval is None or approval.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="approval not found")
+    approval = get_owned(
+        session, ApprovalRequest, approval_id, org, detail="approval not found"
+    )
     if approval.status is not ApprovalStatus.PENDING:
         raise HTTPException(
             status.HTTP_409_CONFLICT,

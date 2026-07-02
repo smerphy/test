@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import current_org
 from app.db import get_session
+from app.deps import get_owned
 from app.models import AlertEvent, AlertRule, AlertState, Organization
 from app.schemas import (
     AlertAcknowledgeIn,
@@ -75,10 +76,7 @@ def get_rule(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> AlertRule:
-    rule = session.get(AlertRule, rule_id)
-    if rule is None or rule.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="rule not found")
-    return rule
+    return get_owned(session, AlertRule, rule_id, org, detail="rule not found")
 
 
 @router.post("/alerts/rules/{rule_id}/evaluate", response_model=list[AlertEventOut])
@@ -87,9 +85,7 @@ def evaluate_now(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> list[AlertEvent]:
-    rule = session.get(AlertRule, rule_id)
-    if rule is None or rule.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="rule not found")
+    rule = get_owned(session, AlertRule, rule_id, org, detail="rule not found")
     return evaluate_rule(session, rule)
 
 
@@ -102,9 +98,9 @@ def acknowledge_event(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> AlertEvent:
-    event = session.get(AlertEvent, event_id)
-    if event is None or event.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="alert event not found")
+    event = get_owned(
+        session, AlertEvent, event_id, org, detail="alert event not found"
+    )
     if event.state is AlertState.RESOLVED:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
