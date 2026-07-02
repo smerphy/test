@@ -5,8 +5,9 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from praetor_engine.audit_hash import compute_hash as _canonical_hash
+
 from app.schemas import AuditEventIn
-from app.services.audit_ingest import _canonical_hash
 
 GENESIS = "0" * 64
 
@@ -75,6 +76,15 @@ def test_ingest_interleaved_sessions_each_own_chain(client: TestClient) -> None:
     r = client.post("/audit/events", json=[a0, b0, a1, b1])
     assert r.status_code == 202
     assert r.json() == {"accepted": 4, "rejected": 0, "errors": []}
+
+
+def test_ingest_rejects_unknown_decision_value(client: TestClient) -> None:
+    # decision is validated against the engine Decision enum, so a bogus
+    # value is a 422 at the boundary rather than an accepted arbitrary string.
+    ev = _event(seq=0, prev_hash=GENESIS)
+    ev["decision"] = "banana"
+    r = client.post("/audit/events", json=[ev])
+    assert r.status_code == 422
 
 
 def test_ingest_broken_prev_hash_rejected(client: TestClient) -> None:

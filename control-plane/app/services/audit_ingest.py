@@ -9,9 +9,7 @@ data.
 
 from __future__ import annotations
 
-import hashlib
-import json
-
+from praetor_engine.audit_hash import GENESIS_HASH, compute_hash
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -19,25 +17,12 @@ from sqlalchemy.orm import Session
 from app.models import AuditEvent
 from app.schemas import AuditEventIn
 
-GENESIS_HASH = "0" * 64
-
-
-def _canonical_hash(payload: dict[str, object]) -> str:
-    # `ensure_ascii=False` matches the SDKs' canonical JSON (the TS SDK emits
-    # raw UTF-8), so an event whose text contains non-ASCII characters
-    # verifies here instead of failing as a false "hash mismatch".
-    return hashlib.sha256(
-        json.dumps(
-            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
-    ).hexdigest()
-
 
 def _verify_hash(event: AuditEventIn) -> None:
-    # Use the same wire-bytes path as the SDK's verify_chain so that
-    # any conformant writer's events ingest cleanly.
+    # Use the same canonicalization as the SDK writer (shared via
+    # praetor_engine.audit_hash) so any conformant writer's events verify.
     body = event.model_dump(mode="json", exclude={"hash"})
-    expected = _canonical_hash(body)
+    expected = compute_hash(body)
     if expected != event.hash:
         raise ValueError(
             f"hash mismatch (computed {expected}, stored {event.hash})"

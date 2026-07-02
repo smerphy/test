@@ -14,7 +14,6 @@ only on ack. Network failures back off but never drop events.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
 import threading
@@ -22,29 +21,20 @@ import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Protocol
 
 from praetor_engine import __version__ as _ENGINE_VERSION
+from praetor_engine.audit_hash import (
+    GENESIS_HASH,
+    compute_hash,
+)
+from praetor_engine.audit_hash import (
+    canonical_timestamp as _canonical_timestamp,
+)
 from praetor_engine.types import Decision, DecisionResult, PolicyInput
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer
 
 from praetor.errors import AuditError
-
-GENESIS_HASH: Final[str] = "0" * 64
-"""SHA-256 placeholder used as the prev_hash of the first event in a log."""
-
-
-def _canonical_timestamp(value: datetime) -> str:
-    """Canonical wire format: `YYYY-MM-DDTHH:MM:SS.sssZ` (ms precision, Z suffix).
-
-    Matches `Date.prototype.toISOString()` in JavaScript so audit chains
-    are cross-language verifiable.
-    """
-    if value.tzinfo is None:
-        raise ValueError("timestamp must be timezone-aware")
-    aware = value.astimezone(UTC)
-    ms = aware.microsecond // 1000
-    return f"{aware.strftime('%Y-%m-%dT%H:%M:%S')}.{ms:03d}Z"
 
 
 class AuditEvent(BaseModel):
@@ -73,31 +63,12 @@ class AuditEvent(BaseModel):
         return _canonical_timestamp(value)
 
 
-def _canonical_bytes_for_hashing(event_minus_hash: dict[str, Any]) -> bytes:
-    """Canonical JSON bytes: sorted keys, no whitespace, UTF-8.
-
-    Same algorithm in both Python and TS SDKs. Hashing over this shape
-    rather than over the in-memory model means cross-language chain
-    verification works as long as both writers use the same canonical
-    timestamp / scalar serialization.
-
-    `ensure_ascii=False` is required for cross-language parity: the TS SDK's
-    `JSON.stringify` emits raw UTF-8, so a value like `"café"` must hash as
-    UTF-8 here too rather than as an escaped `"caf\\u00e9"`. (One residual
-    gap remains: integral floats — Python `1.0` vs JS `1` — since JS has no
-    int/float distinction; avoid float-valued tool arguments in chains that
-    must verify across languages.)
-    """
-    return json.dumps(
-        event_minus_hash,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
-
-
-def _compute_hash(event_dict_minus_hash: dict[str, Any]) -> str:
-    return hashlib.sha256(_canonical_bytes_for_hashing(event_dict_minus_hash)).hexdigest()
+# Canonicalization + hashing are shared with the control plane and mirrored
+# by the TS SDK via praetor_engine.audit_hash, so every party recomputes the
+# same bytes. (One residual cross-language gap: integral floats — Python 1.0
+# vs JS 1 — since JS has no int/float distinction; avoid float-valued tool
+# arguments in chains that must verify across languages.)
+_compute_hash = compute_hash
 
 
 class AuditSink(Protocol):
@@ -125,9 +96,6 @@ class NullAuditSink:
 
     def close(self) -> None:
         return None
-
-
-_HASH_PLACEHOLDER = "0" * 64
 
 
 def _build_event(

@@ -82,12 +82,12 @@ def test_process_audit_batch_task_counts_accepted_and_rejected(
         prev_hash="0" * 64,
         hash="0" * 64,
     )
-    # Compute correct hash via the service helper.
-    from app.services.audit_ingest import _canonical_hash
+    # Compute correct hash via the shared canonical helper.
+    from praetor_engine.audit_hash import compute_hash
 
     body = good.model_dump(mode="json", exclude={"hash"})
     good_dict = good.model_dump(mode="json")
-    good_dict["hash"] = _canonical_hash(body)
+    good_dict["hash"] = compute_hash(body)
 
     bad_dict = {**good_dict, "hash": "0" * 64}  # tampered hash
 

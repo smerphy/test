@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
+from praetor_engine.audit_hash import canonical_timestamp as _canonical_timestamp
+from praetor_engine.types import Decision
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.models import (
@@ -18,14 +20,6 @@ from app.models import (
     ReportStatus,
     RolloutState,
 )
-
-
-def _canonical_timestamp(value: datetime) -> str:
-    """Match the SDK's wire format: `YYYY-MM-DDTHH:MM:SS.sssZ`."""
-    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
-    aware = aware.astimezone(UTC)
-    ms = aware.microsecond // 1000
-    return f"{aware.strftime('%Y-%m-%dT%H:%M:%S')}.{ms:03d}Z"
 
 _BASE = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -122,7 +116,7 @@ class AuditEventIn(BaseModel):
     tool_name: str
     tool_use_id: str | None = None
     tool_arguments: dict[str, Any]
-    decision: str
+    decision: Decision
     reason: str
     matched_policy_id: str | None = None
     suggested_transform: dict[str, Any] | None = None
@@ -134,6 +128,11 @@ class AuditEventIn(BaseModel):
     @field_serializer("timestamp")
     def _serialize_timestamp(self, value: datetime) -> str:
         return _canonical_timestamp(value)
+
+    @field_serializer("decision")
+    def _serialize_decision(self, value: Decision) -> str:
+        # Hash body must contain the raw wire string ("allow"), not "Decision.ALLOW".
+        return value.value
 
 
 class AuditEventOut(BaseModel):
