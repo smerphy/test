@@ -11,7 +11,9 @@ from praetor_engine.pricing import (
 
 def test_known_model_cost() -> None:
     # opus-4-8: input 15/Mtok, output 75/Mtok.
-    cost = compute_cost_usd(model="claude-opus-4-8", input_tokens=1_000_000, output_tokens=1_000_000)
+    cost = compute_cost_usd(
+        model="claude-opus-4-8", input_tokens=1_000_000, output_tokens=1_000_000
+    )
     assert cost == pytest.approx(90.0)
 
 
