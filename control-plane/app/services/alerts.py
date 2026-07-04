@@ -28,6 +28,7 @@ from app.models import (
     AlertState,
     MetricEvent,
 )
+from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
 
 def _strip_tz(value: datetime) -> datetime:
@@ -267,6 +268,10 @@ def _route(
     event.payload = payload
     client = http_client or httpx.Client(timeout=10.0)
     try:
+        # SLACK/WEBHOOK POST to the tenant-supplied target URL: re-check it is
+        # not an internal address right before the request (SSRF guard).
+        if rule.channel in (AlertChannel.SLACK, AlertChannel.WEBHOOK):
+            assert_safe_webhook_url(rule.target)
         if rule.channel is AlertChannel.SLACK:
             r = client.post(rule.target, json=payload["slack"])
             r.raise_for_status()
@@ -291,9 +296,14 @@ def _route(
                 "email channel requires an SMTP/SES transport; not bundled in MVP"
             )
         event.delivered = True
-    except Exception as exc:
+    except EgressBlocked:
         event.delivered = False
-        event.delivery_error = f"{type(exc).__name__}: {exc}"
+        event.delivery_error = "delivery blocked: target address not allowed"
+    except Exception:
+        # Do not echo the raw exception: it would be an SSRF oracle (open
+        # ports, connection-refused, internal HTTP status all distinguishable).
+        event.delivered = False
+        event.delivery_error = "delivery failed"
 
 
 def _enum_value(v: Any) -> str:

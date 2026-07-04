@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.auth import current_org
 from app.db import get_session
 from app.models import Organization
 from app.schemas import OrganizationOut, OrganizationUpdateIn
+from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
 router = APIRouter(tags=["org"])
 
@@ -28,6 +29,15 @@ def update_org(
     # update doesn't clobber unrelated settings.
     fields = body.model_dump(exclude_unset=True)
     if "approval_webhook_url" in fields:
-        org.approval_webhook_url = fields["approval_webhook_url"]
+        url = fields["approval_webhook_url"]
+        if url:
+            try:
+                assert_safe_webhook_url(url)
+            except EgressBlocked as exc:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"approval_webhook_url rejected: {exc}",
+                ) from exc
+        org.approval_webhook_url = url
     session.flush()
     return org

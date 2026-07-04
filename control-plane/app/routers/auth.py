@@ -9,6 +9,9 @@ remain the credential for SDK-driven traffic.
 
 from __future__ import annotations
 
+import hashlib
+import html
+
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -20,6 +23,33 @@ from app.models import Organization, User
 from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Free-mail domains that must never auto-join a shared tenant (they are not
+# owned by a single organization). Users on these get an isolated per-user org.
+_PUBLIC_EMAIL_DOMAINS = frozenset(
+    {
+        "gmail.com",
+        "googlemail.com",
+        "outlook.com",
+        "hotmail.com",
+        "live.com",
+        "msn.com",
+        "yahoo.com",
+        "ymail.com",
+        "icloud.com",
+        "me.com",
+        "aol.com",
+        "proton.me",
+        "protonmail.com",
+        "pm.me",
+        "gmx.com",
+        "mail.com",
+        "yandex.com",
+        "zoho.com",
+        "fastmail.com",
+        "hey.com",
+    }
+)
 
 _oauth = OAuth()
 
@@ -99,8 +129,9 @@ async def callback(
 
     user = _upsert_user(session, email=email, name=profile.get("name"))
     request.session["user_id"] = user.id
+    # Escape the provider-supplied email before reflecting it into HTML.
     return HTMLResponse(
-        f'<p>Signed in as {email}. <a href="/">Continue</a>.</p>'
+        f'<p>Signed in as {html.escape(email)}. <a href="/">Continue</a>.</p>'
     )
 
 
@@ -117,17 +148,24 @@ def _upsert_user(session: Session, *, email: str, name: str | None) -> User:
     if user is not None:
         return user
 
-    # New user: link to the organization for their email domain (so verified
-    # teammates on the same domain share a tenant), creating it if needed.
-    # Never fall back to "the first organization" — that would silently drop
-    # an unrelated user into another company's tenant.
-    domain = email.split("@", 1)[1] if "@" in email else "default"
-    slug = domain.replace(".", "-")
+    # New user tenanting. For a corporate domain, verified teammates on the
+    # same domain share a tenant. For a public free-mail domain, that would
+    # dump every unrelated gmail.com/outlook.com signup into ONE shared org
+    # (a cross-tenant data leak), so give each such user their own isolated
+    # org keyed on their verified email instead. Never fall back to "the
+    # first organization".
+    domain = (email.rsplit("@", 1)[1] if "@" in email else "default").lower()
+    if domain in _PUBLIC_EMAIL_DOMAINS:
+        slug = "user-" + hashlib.sha256(email.encode()).hexdigest()[:16]
+        org_name = email
+    else:
+        slug = domain.replace(".", "-")
+        org_name = domain.capitalize()
     org = session.execute(
         select(Organization).where(Organization.slug == slug)
     ).scalar_one_or_none()
     if org is None:
-        org = Organization(name=domain.capitalize(), slug=slug)
+        org = Organization(name=org_name, slug=slug)
         session.add(org)
         session.flush()
 

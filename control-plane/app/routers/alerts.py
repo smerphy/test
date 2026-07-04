@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth import current_org
 from app.db import get_session
 from app.deps import get_owned
-from app.models import AlertEvent, AlertRule, AlertState, Organization
+from app.models import AlertChannel, AlertEvent, AlertRule, AlertState, Organization
 from app.schemas import (
     AlertAcknowledgeIn,
     AlertEventOut,
@@ -20,6 +20,7 @@ from app.schemas import (
     AlertRuleOut,
 )
 from app.services.alerts import evaluate_rule
+from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
 router = APIRouter(tags=["alerts"])
 
@@ -34,6 +35,17 @@ def create_rule(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> AlertRule:
+    # SLACK/WEBHOOK targets are URLs the control plane POSTs to; reject
+    # internal addresses up front (SSRF guard). PagerDuty target is a routing
+    # key, not a URL.
+    if body.channel in (AlertChannel.SLACK, AlertChannel.WEBHOOK):
+        try:
+            assert_safe_webhook_url(body.target)
+        except EgressBlocked as exc:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"target rejected: {exc}",
+            ) from exc
     rule = AlertRule(
         organization_id=org.id,
         name=body.name,

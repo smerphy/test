@@ -15,6 +15,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models import ApprovalRequest, Organization
+from app.services.egress import is_safe_webhook_url
 
 
 def build_approval_payload(approval: ApprovalRequest) -> dict[str, Any]:
@@ -87,6 +88,9 @@ def deliver_approval_notification(
         return False
     org = session.get(Organization, approval.organization_id)
     if org is None or not org.approval_webhook_url:
+        return False
+    # SSRF guard: re-check the webhook is not an internal address at send time.
+    if not is_safe_webhook_url(org.approval_webhook_url):
         return False
     client = http_client or httpx.Client(timeout=10.0)
     try:

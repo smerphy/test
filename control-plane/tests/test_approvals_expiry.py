@@ -84,6 +84,19 @@ def test_create_sets_expires_at(client: TestClient) -> None:
     assert r.json()["expires_at"] is not None
 
 
+def test_cannot_resolve_expired_approval(
+    client: TestClient, session: Session, org: Organization
+) -> None:
+    # A still-PENDING but overdue approval must not be resolvable (the resolve
+    # path expires it rather than approving past its TTL).
+    a = _pending(
+        session, org, expires_at=datetime.now(UTC) - timedelta(minutes=1)
+    )
+    r = client.post(f"/approvals/{a.id}/resolve", json={"approved": True})
+    assert r.status_code == 409
+    assert client.get(f"/approvals/{a.id}").json()["status"] == "expired"
+
+
 def test_expire_task_runs(session: Session, org: Organization) -> None:
     from app.workers.tasks import expire_stale_approvals_task
 

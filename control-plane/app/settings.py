@@ -11,6 +11,10 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Placeholder session secret. create_app() refuses to boot with this value
+# outside dev mode, since it signs browser auth cookies.
+DEFAULT_SESSION_SECRET = "dev-only-replace-me"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -19,6 +23,12 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    # Explicit development mode. Must be set to true to run without configured
+    # API keys or with the placeholder secrets below; otherwise the app
+    # fail-closes (401 on the API-key path, refuses to boot with a default
+    # signing secret). NEVER enable in production.
+    dev_mode: bool = Field(default=False)
 
     # Defaults to in-memory SQLite for tests. Production: postgresql+psycopg://...
     database_url: str = Field(default="sqlite+pysqlite:///:memory:")
@@ -35,11 +45,6 @@ class Settings(BaseSettings):
     # closes cross-tenant access for API-key traffic; keys left unbound are
     # only usable in single-organization deployments.
     api_key_orgs: dict[str, str] = Field(default_factory=dict)
-
-    # Approval webhook callbacks land here; we re-emit to subscribed
-    # SDKs via the registry pattern. URL is provided per-org once
-    # multi-tenancy is wired in.
-    approval_callback_secret: str = Field(default="dev-only-not-secret")
 
     structured_logs: bool = Field(default=True)
 
@@ -61,7 +66,7 @@ class Settings(BaseSettings):
     github_client_id: str = Field(default="")
     github_client_secret: str = Field(default="")
     oauth_redirect_base_url: str = Field(default="http://localhost:8000")
-    session_secret: str = Field(default="dev-only-replace-me")
+    session_secret: str = Field(default=DEFAULT_SESSION_SECRET)
 
 
 @lru_cache(maxsize=1)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+from annotated_types import Len
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,7 +31,7 @@ router = APIRouter(tags=["metrics"])
     status_code=status.HTTP_202_ACCEPTED,
 )
 def ingest_events(
-    events: list[MetricEventIn],
+    events: Annotated[list[MetricEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> MetricIngestResult:

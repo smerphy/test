@@ -70,7 +70,10 @@ class PolicyBundleOut(BaseModel):
 
 class PolicyVersionIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    yaml_text: str = Field(..., min_length=1)
+    # Bound the bundle size: caps parser memory/CPU and the blast radius of a
+    # YAML alias-expansion ("billion laughs") bundle. 256 KiB is far above any
+    # realistic policy bundle.
+    yaml_text: str = Field(..., min_length=1, max_length=256 * 1024)
     notes: str | None = None
     author_email: str | None = None
 

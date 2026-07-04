@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -54,11 +56,15 @@ def request_report(
 def list_reports(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ComplianceReport]:
     stmt = (
         select(ComplianceReport)
         .where(ComplianceReport.organization_id == org.id)
         .order_by(ComplianceReport.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return list(session.execute(stmt).scalars().all())
 

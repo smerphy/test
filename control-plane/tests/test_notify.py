@@ -40,7 +40,7 @@ def test_payload_carries_raw_fields(session: Session, org: Organization) -> None
 def test_delivers_when_webhook_configured(
     session: Session, org: Organization
 ) -> None:
-    org.approval_webhook_url = "https://hooks.example/x"
+    org.approval_webhook_url = "https://example.com/hook"
     a = _approval(session, org)
     posted: list[dict] = []
 
@@ -63,7 +63,7 @@ def test_noop_when_no_webhook(session: Session, org: Organization) -> None:
 def test_delivery_failure_is_swallowed(
     session: Session, org: Organization
 ) -> None:
-    org.approval_webhook_url = "https://hooks.example/x"
+    org.approval_webhook_url = "https://example.com/hook"
     a = _approval(session, org)
 
     def handler(request: httpx.Request) -> httpx.Response:

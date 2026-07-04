@@ -21,9 +21,15 @@ from app.settings import Settings, get_settings
 
 def _check_api_key(api_key: str | None, settings: Settings) -> None:
     if not settings.api_keys:
-        # Dev mode with no keys configured: allow everything. Loud-fail
-        # in production is the caller's job (set PRAETOR_API_KEYS).
-        return
+        # No keys configured. Only allow-all in explicit dev mode; otherwise
+        # fail closed so a deploy that forgets PRAETOR_API_KEYS is not silently
+        # open to anonymous, any-tenant access.
+        if settings.dev_mode:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API authentication is not configured",
+        )
     if api_key is None or api_key not in settings.api_keys:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -70,8 +76,8 @@ def current_org(
     # X-Org-Slug — that is a cross-tenant breach.
     target_slug: str | None
     if not settings.api_keys:
-        # Dev mode: no keys configured, auth is effectively open (see
-        # _check_api_key). Resolve by the requested slug as before.
+        # Only reachable in dev mode (otherwise _check_api_key already 401'd).
+        # Resolve by the requested slug for local development.
         target_slug = x_org_slug
     else:
         bound_slug = settings.api_key_orgs.get(x_api_key or "")

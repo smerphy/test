@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
+from annotated_types import Len
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +25,7 @@ router = APIRouter(tags=["audit"])
     status_code=status.HTTP_202_ACCEPTED,
 )
 def ingest_events(
-    events: list[AuditEventIn],
+    events: Annotated[list[AuditEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> AuditIngestResult:

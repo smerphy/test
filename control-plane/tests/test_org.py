@@ -13,19 +13,27 @@ def test_get_org_returns_current_org(client: TestClient) -> None:
 
 def test_patch_org_sets_approval_webhook(client: TestClient) -> None:
     r = client.patch(
-        "/org", json={"approval_webhook_url": "https://hooks.example/x"}
+        "/org", json={"approval_webhook_url": "https://example.com/hook"}
     )
     assert r.status_code == 200
-    assert r.json()["approval_webhook_url"] == "https://hooks.example/x"
+    assert r.json()["approval_webhook_url"] == "https://example.com/hook"
     # Persisted for subsequent reads.
     assert (
         client.get("/org").json()["approval_webhook_url"]
-        == "https://hooks.example/x"
+        == "https://example.com/hook"
     )
 
 
+def test_patch_org_rejects_internal_webhook(client: TestClient) -> None:
+    # SSRF guard: an internal/metadata URL must be rejected at write time.
+    r = client.patch(
+        "/org", json={"approval_webhook_url": "http://169.254.169.254/latest/"}
+    )
+    assert r.status_code == 422
+
+
 def test_patch_org_can_clear_webhook(client: TestClient) -> None:
-    client.patch("/org", json={"approval_webhook_url": "https://hooks.example/x"})
+    client.patch("/org", json={"approval_webhook_url": "https://example.com/hook"})
     r = client.patch("/org", json={"approval_webhook_url": None})
     assert r.json()["approval_webhook_url"] is None
 

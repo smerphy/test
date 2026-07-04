@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi.testclient import TestClient
-
 from praetor_engine.audit_hash import compute_hash as _canonical_hash
 
 from app.schemas import AuditEventIn
@@ -76,6 +75,25 @@ def test_ingest_interleaved_sessions_each_own_chain(client: TestClient) -> None:
     r = client.post("/audit/events", json=[a0, b0, a1, b1])
     assert r.status_code == 202
     assert r.json() == {"accepted": 4, "rejected": 0, "errors": []}
+
+
+def test_ingest_batch_size_is_capped(client: TestClient) -> None:
+    # Oversized batches are rejected (DoS guard) before any per-row work.
+    minimal = {
+        "seq": 0,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "agent_id": "a",
+        "session_id": "s",
+        "tool_name": "t",
+        "tool_arguments": {},
+        "decision": "allow",
+        "reason": "r",
+        "evaluator_version": "0.1.0",
+        "prev_hash": "0" * 64,
+        "hash": "0" * 64,
+    }
+    r = client.post("/audit/events", json=[minimal] * 1001)
+    assert r.status_code == 422
 
 
 def test_ingest_rejects_unknown_decision_value(client: TestClient) -> None:

@@ -39,6 +39,25 @@ def _apply_resolution(
     approval.resolved_by = resolved_by
 
 
+def _expire_if_overdue(approval: ApprovalRequest) -> bool:
+    """If the approval's TTL has passed, mark it EXPIRED and return True.
+
+    Guards the resolve paths so a request cannot be approved after its window
+    even if the background sweep hasn't run yet."""
+    if approval.expires_at is None:
+        return False
+    now = datetime.now(UTC)
+    # SQLite drops tzinfo on storage; treat a naive value as UTC.
+    expires_at = approval.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if now > expires_at:
+        approval.status = ApprovalStatus.EXPIRED
+        approval.resolved_at = now
+        return True
+    return False
+
+
 @router.post(
     "/approvals",
     response_model=ApprovalRequestOut,
@@ -120,6 +139,14 @@ def resolve_approval(
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             detail=f"approval already {approval.status.value}",
+        )
+    if _expire_if_overdue(approval):
+        # Commit the EXPIRED transition before raising: get_session rolls the
+        # request session back on any exception, which would otherwise discard
+        # the state change we just made.
+        session.commit()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="approval has expired"
         )
     _apply_resolution(approval, approved=body.approved, resolved_by=body.resolved_by)
     session.flush()
@@ -217,6 +244,9 @@ async def slack_actions(
         # Already resolved (double click, or resolved in the dashboard). Not an
         # error — tell Slack what happened so the user sees a sensible message.
         return {"text": f"Already {approval.status.value}."}
+    if _expire_if_overdue(approval):
+        session.flush()
+        return {"text": "This approval has expired."}
 
     _apply_resolution(approval, approved=verb == "approve", resolved_by=resolved_by)
     session.flush()
