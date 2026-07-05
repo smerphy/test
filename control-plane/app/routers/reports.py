@@ -14,6 +14,7 @@ from app.db import get_session
 from app.deps import get_owned
 from app.models import ComplianceReport, Organization, ReportStatus, Role
 from app.schemas import ComplianceReportIn, ComplianceReportOut
+from app.services.access_log import access_log
 from app.services.pdf import render_report_pdf
 from app.workers.tasks import generate_report_task
 
@@ -88,6 +89,7 @@ def get_report_pdf(
     report_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _al: None = Depends(access_log("reports", "export")),
 ) -> Response:
     report = get_owned(
         session, ComplianceReport, report_id, org, detail="report not found"

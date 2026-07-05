@@ -840,3 +840,17 @@ class EraseSubjectOut(BaseModel):
     occurrences: int
     # Audit events reference the subject but are hash-chained (immutable here).
     audit_events_referencing: int
+
+
+class AccessLogOut(BaseModel):
+    model_config = _BASE
+    id: str
+    actor: str
+    actor_kind: str
+    resource: str
+    action: str
+    method: str
+    path: str
+    source_ip: str | None
+    detail: dict[str, Any]
+    created_at: datetime

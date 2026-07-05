@@ -1,3 +1,4 @@
+from app.models.access_log import AccessLog
 from app.models.agent import Agent
 from app.models.ai_usage import AIUsage
 from app.models.alert import (
@@ -51,6 +52,7 @@ __all__ = [
     "OPEN_FINDING_STATUSES",
     "TLP",
     "AIUsage",
+    "AccessLog",
     "Agent",
     "AlertAggregation",
     "AlertChannel",

@@ -27,6 +27,7 @@ from app.models import (
     risk_score,
 )
 from app.schemas import FindingOut, FindingReportIn, FindingUpdateIn
+from app.services.access_log import access_log
 from app.services.ai.budget import is_over_budget, metered
 from app.services.ai.config import ai_available, org_llm_config
 from app.services.ai.findings_ingest import report_observation, run_ai_sweep
@@ -44,6 +45,7 @@ _TERMINAL = (FindingStatus.RESOLVED, FindingStatus.FALSE_POSITIVE)
 def list_findings(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _al: None = Depends(access_log("findings")),
     status_filter: Annotated[FindingStatus | None, Query(alias="status")] = None,
     severity: FindingSeverity | None = None,
     category: FindingCategory | None = None,

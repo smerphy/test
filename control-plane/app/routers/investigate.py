@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth import current_org
 from app.db import get_session
 from app.models import Organization
+from app.services.access_log import access_log
 from app.services.investigate import security_overview, session_timeline
 
 router = APIRouter(tags=["investigate"])
@@ -30,6 +31,7 @@ def timeline(
     session_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _al: None = Depends(access_log("investigate")),
 ) -> list[dict[str, Any]]:
     """Chronological reconstruction of one agent session: decisions,
     findings, approvals, and quarantines."""

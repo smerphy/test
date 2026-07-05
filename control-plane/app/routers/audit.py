@@ -14,6 +14,7 @@ from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.models import AuditEvent, Organization, Role
 from app.schemas import AuditEventIn, AuditEventOut, AuditIngestResult
+from app.services.access_log import access_log
 from app.services.audit_ingest import ingest_event
 from app.services.event_store import archive_events
 from app.services.ratelimit import rate_limit
@@ -54,6 +55,7 @@ def ingest_events(
 def search_events(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _al: None = Depends(access_log("audit")),
     agent_id: str | None = None,
     tool_name: str | None = None,
     decision: str | None = None,
