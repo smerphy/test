@@ -37,6 +37,10 @@ celery_app.conf.beat_schedule = {
         "task": "praetor.approvals.expire_stale",
         "schedule": 60.0,
     },
+    "run-detections": {
+        "task": "praetor.detections.run_all",
+        "schedule": 120.0,
+    },
 }
 
 

@@ -12,11 +12,12 @@ from sqlalchemy import select
 
 from app.celery_app import celery_app
 from app.db import SessionLocal
-from app.models import AlertRule, ComplianceReport
+from app.models import AlertRule, ComplianceReport, Organization
 from app.schemas import AuditEventIn, MetricEventIn
 from app.services.alerts import evaluate_rule
 from app.services.approvals import expire_stale_approvals
 from app.services.audit_ingest import ingest_event
+from app.services.detections import run_detections
 from app.services.metrics import ingest_metric
 from app.services.notify import deliver_approval_notification
 from app.services.report import generate_report
@@ -93,6 +94,22 @@ def expire_stale_approvals_task() -> int:
     return expired
 
 
+@celery_app.task(name="praetor.detections.run_all")
+def run_detections_task() -> dict[str, int]:
+    """Run the detection engine across every org. Schedule via Celery beat."""
+    created = updated = 0
+    with SessionLocal() as session:
+        org_ids = list(
+            session.execute(select(Organization.id)).scalars()
+        )
+        for org_id in org_ids:
+            result = run_detections(session, org_id=org_id)
+            created += result["created"]
+            updated += result["updated"]
+        session.commit()
+    return {"created": created, "updated": updated}
+
+
 @celery_app.task(name="praetor.alerts.evaluate_all")
 def evaluate_all_alerts_task() -> dict[str, int]:
     """Evaluate every enabled alert rule across every org.
@@ -123,4 +140,5 @@ __all__ = [
     "notify_approval_task",
     "process_audit_batch_task",
     "process_metric_batch_task",
+    "run_detections_task",
 ]

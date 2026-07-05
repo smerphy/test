@@ -17,6 +17,9 @@ from app.models import (
     AlertSeverity,
     AlertState,
     ApprovalStatus,
+    FindingCategory,
+    FindingSeverity,
+    FindingStatus,
     ReportStatus,
     RolloutState,
 )
@@ -203,6 +206,42 @@ class ApprovalRequestOut(BaseModel):
     resolved_at: datetime | None
     resolved_by: str | None
     created_at: datetime
+
+
+# ----------------------------------------------------------------
+# Findings (SIEM / EDR detections)
+# ----------------------------------------------------------------
+
+
+class FindingOut(BaseModel):
+    model_config = _BASE
+    id: str
+    rule_id: str
+    title: str
+    severity: FindingSeverity
+    category: FindingCategory
+    status: FindingStatus
+    agent_id: str | None
+    session_id: str | None
+    count: int
+    first_seen: datetime
+    last_seen: datetime
+    evidence: dict[str, Any]
+    atlas_technique: str | None
+    owasp_llm: str | None
+    assignee: str | None
+    note: str | None
+    resolved_at: datetime | None
+    resolved_by: str | None
+    created_at: datetime
+
+
+class FindingUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: FindingStatus | None = None
+    assignee: str | None = Field(default=None, max_length=255)
+    note: str | None = Field(default=None, max_length=4000)
+    resolved_by: str | None = Field(default=None, max_length=255)
 
 
 class ComplianceReportIn(BaseModel):

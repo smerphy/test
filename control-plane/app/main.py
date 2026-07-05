@@ -8,7 +8,16 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.db import init_schema
-from app.routers import alerts, approvals, audit, metrics, org, policies, reports
+from app.routers import (
+    alerts,
+    approvals,
+    audit,
+    findings,
+    metrics,
+    org,
+    policies,
+    reports,
+)
 from app.routers import auth as auth_router
 from app.settings import DEFAULT_SESSION_SECRET as _DEFAULT_SESSION_SECRET
 from app.settings import get_settings
@@ -66,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics.router)
     app.include_router(alerts.router)
     app.include_router(org.router)
+    app.include_router(findings.router)
     app.include_router(auth_router.router)
 
     @app.middleware("http")

@@ -3,7 +3,7 @@
 Enterprise Claude monitoring + alerting + runtime policy enforcement
 for AI agents.
 
-Two complementary subsystems share one control plane:
+Three complementary subsystems share one control plane:
 
 1. **Monitoring & alerting** — `AnthropicMonitor` wraps your
    `anthropic.Anthropic` client and ships a metric event per Claude API
@@ -21,8 +21,16 @@ Two complementary subsystems share one control plane:
    `prompt_injection` bundle (18 rules) detecting prompt-injection,
    jailbreak, and indirect-injection / data-exfil patterns
    (OWASP LLM01/LLM02/LLM06).
+3. **Detection & findings (SIEM / EDR)** — a detection engine correlates
+   the audit + metric stream into **security findings** (prompt-injection
+   attempts, repeated-denial bursts, injection→exfil kill-chains,
+   approval-abuse probing, new-tool/UEBA anomalies), each mapped to MITRE
+   ATLAS / OWASP LLM with a triage lifecycle (open → triaging → resolved /
+   false-positive). Runs on a schedule via Celery beat and on demand via
+   `POST /findings/run`; analysts work findings through `GET/PATCH
+   /findings`.
 
-Both layers feed the same audit + reports surface so security, SRE,
+These layers feed the same audit + reports surface so security, SRE,
 and compliance teams work off one source of truth. Apache 2.0.
 
 ## Layout

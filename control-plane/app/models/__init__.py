@@ -10,6 +10,13 @@ from app.models.alert import (
 )
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.audit import AuditEvent
+from app.models.finding import (
+    OPEN_FINDING_STATUSES,
+    Finding,
+    FindingCategory,
+    FindingSeverity,
+    FindingStatus,
+)
 from app.models.metric import MetricEvent
 from app.models.org import Organization, User
 from app.models.policy import (
@@ -22,6 +29,7 @@ from app.models.policy import (
 from app.models.report import ComplianceReport, ReportStatus
 
 __all__ = [
+    "OPEN_FINDING_STATUSES",
     "AlertAggregation",
     "AlertChannel",
     "AlertComparison",
@@ -34,6 +42,10 @@ __all__ = [
     "ApprovalStatus",
     "AuditEvent",
     "ComplianceReport",
+    "Finding",
+    "FindingCategory",
+    "FindingSeverity",
+    "FindingStatus",
     "MetricEvent",
     "Organization",
     "PolicyBundle",
