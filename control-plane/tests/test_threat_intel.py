@@ -20,8 +20,11 @@ from app.models import (
 )
 from app.services.detections import run_detections
 from app.services.threat_intel import (
+    discover_taxii_collections,
     normalize_indicator,
     parse_feed,
+    parse_stix_objects,
+    poll_taxii_collection,
     sync_feed,
     upsert_indicators,
 )
@@ -373,6 +376,142 @@ def test_rbac_viewer_cannot_manage_feeds(
         c.post(
             "/threat/feeds",
             json={"name": "x", "format": "plaintext", "default_indicator_type": "domain"},
+        ).status_code
+        == 403
+    )
+
+
+# --- TAXII 2.1 --------------------------------------------------------------
+def _json_client(payloads: list[dict]) -> tuple[httpx.Client, list[httpx.Request]]:
+    state = {"i": 0}
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        idx = min(state["i"], len(payloads) - 1)
+        state["i"] += 1
+        return httpx.Response(200, json=payloads[idx])
+
+    return httpx.Client(transport=httpx.MockTransport(handler)), seen
+
+
+def _stix_indicator(pattern: str) -> dict:
+    return {
+        "type": "indicator",
+        "spec_version": "2.1",
+        "id": "indicator--00000000-0000-4000-8000-000000000000",
+        "pattern": pattern,
+        "pattern_type": "stix",
+        "valid_until": "2030-01-01T00:00:00Z",
+    }
+
+
+_OBJECTS_URL = "https://example.com/api1/collections/c1/objects/"
+
+
+def test_taxii_poll_single_page() -> None:
+    client, _ = _json_client(
+        [{"objects": [_stix_indicator("[domain-name:value = 'evil.taxii']")], "more": False}]
+    )
+    objs = poll_taxii_collection(_OBJECTS_URL, http_client=client)
+    drafts = parse_stix_objects(objs)
+    assert (drafts[0].type, drafts[0].value) == ("domain", "evil.taxii")
+
+
+def test_taxii_pagination_follows_next() -> None:
+    p1 = {
+        "objects": [_stix_indicator("[domain-name:value = 'a.com']")],
+        "more": True,
+        "next": "CURSOR2",
+    }
+    p2 = {
+        "objects": [_stix_indicator("[domain-name:value = 'b.com']")],
+        "more": False,
+    }
+    client, seen = _json_client([p1, p2])
+    objs = poll_taxii_collection(_OBJECTS_URL, http_client=client)
+    assert len(objs) == 2
+    # The second request carries the `next` cursor from page one.
+    assert seen[1].url.params.get("next") == "CURSOR2"
+
+
+def test_taxii_incremental_added_after() -> None:
+    client, seen = _json_client([{"objects": [], "more": False}])
+    since = datetime(2026, 7, 1, tzinfo=UTC)
+    poll_taxii_collection(_OBJECTS_URL, added_after=since, http_client=client)
+    assert seen[0].url.params.get("added_after", "").startswith("2026-07-01")
+
+
+def test_taxii_ssrf_blocked() -> None:
+    import pytest
+
+    from app.services.egress import EgressBlocked
+
+    client, _ = _json_client([{"objects": [], "more": False}])
+    with pytest.raises(EgressBlocked):
+        poll_taxii_collection(
+            "http://169.254.169.254/collections/c/objects/", http_client=client
+        )
+
+
+def test_sync_taxii_feed(session: Session, org: Organization) -> None:
+    feed = _persisted_feed(session, org, "taxii", url=_OBJECTS_URL)
+    client, _ = _json_client(
+        [{"objects": [_stix_indicator("[ipv4-addr:value = '5.5.5.5']")], "more": False}]
+    )
+    result = sync_feed(session, feed, http_client=client)
+    session.commit()
+    assert result["status"] == "ok"
+    assert result["created"] == 1
+    ind = (
+        session.query(ThreatIndicator)
+        .filter_by(organization_id=org.id, type="ip")
+        .one()
+    )
+    assert ind.value == "5.5.5.5"
+
+
+def test_discover_taxii_collections() -> None:
+    client, _ = _json_client(
+        [
+            {
+                "collections": [
+                    {
+                        "id": "c1",
+                        "title": "Malware",
+                        "can_read": True,
+                        "media_types": ["application/stix+json;version=2.1"],
+                    }
+                ]
+            }
+        ]
+    )
+    cols = discover_taxii_collections("https://example.com/api1", http_client=client)
+    assert cols[0]["id"] == "c1"
+    assert cols[0]["objects_url"] == (
+        "https://example.com/api1/collections/c1/objects/"
+    )
+
+
+def test_taxii_discover_endpoint_rbac_and_validation(
+    monkeypatch, app, client: TestClient, org: Organization
+) -> None:
+    # Internal URL rejected up front (no network hit).
+    r = client.post(
+        "/threat/taxii/discover", json={"url": "http://169.254.169.254/api1"}
+    )
+    assert r.status_code == 422
+
+    # Analyst may not discover (admin-only) — blocked before any network hit.
+    s = get_settings()
+    monkeypatch.setattr(s, "api_keys", ["an"])
+    monkeypatch.setattr(s, "api_key_orgs", {"an": "acme"})
+    monkeypatch.setattr(s, "api_key_roles", {"an": "analyst"})
+    c = TestClient(app)
+    c.headers.update({"X-API-Key": "an", "X-Org-Slug": "acme"})
+    assert (
+        c.post(
+            "/threat/taxii/discover", json={"url": "https://example.com/api1"}
         ).status_code
         == 403
     )

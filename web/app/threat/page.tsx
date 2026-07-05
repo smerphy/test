@@ -24,7 +24,7 @@ const INDICATOR_TYPES = [
   "prompt_signature",
   "regex",
 ];
-const FEED_FORMATS = ["plaintext", "json", "csv", "stix", "misp"];
+const FEED_FORMATS = ["plaintext", "json", "csv", "stix", "misp", "taxii"];
 
 const STATUS_STYLE: Record<string, string> = {
   ok: "text-emerald-400",

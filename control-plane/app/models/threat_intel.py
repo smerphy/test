@@ -74,6 +74,9 @@ class FeedFormat(StrEnum):
     PLAINTEXT = "plaintext"
     STIX = "stix"
     MISP = "misp"
+    # TAXII 2.1 collection: `url` is the collection objects endpoint; the
+    # server returns STIX 2.x objects, polled incrementally with `added_after`.
+    TAXII = "taxii"
 
 
 class TLP(StrEnum):

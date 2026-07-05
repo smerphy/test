@@ -256,15 +256,12 @@ _RE_STIX_COMP = re.compile(
 )
 
 
-def _parse_stix(content: str) -> list[IndicatorDraft]:
-    try:
-        bundle = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise FeedParseError(f"invalid STIX JSON: {exc}") from exc
-    objects = bundle.get("objects", bundle) if isinstance(bundle, dict) else bundle
-    if not isinstance(objects, list):
-        raise FeedParseError("STIX bundle has no 'objects' list")
+def parse_stix_objects(objects: list[Any]) -> list[IndicatorDraft]:
+    """Parse a list of STIX 2.x objects (SDOs) into indicator drafts.
 
+    Shared by the STIX-file parser and the TAXII poller, which both surface a
+    list of STIX objects (from a bundle's ``objects`` or a TAXII envelope).
+    """
     drafts: list[IndicatorDraft] = []
     for obj in objects:
         if not isinstance(obj, dict) or obj.get("type") != "indicator":
@@ -289,6 +286,17 @@ def _parse_stix(content: str) -> list[IndicatorDraft]:
                 )
             )
     return drafts
+
+
+def _parse_stix(content: str) -> list[IndicatorDraft]:
+    try:
+        bundle = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise FeedParseError(f"invalid STIX JSON: {exc}") from exc
+    objects = bundle.get("objects", bundle) if isinstance(bundle, dict) else bundle
+    if not isinstance(objects, list):
+        raise FeedParseError("STIX bundle has no 'objects' list")
+    return parse_stix_objects(objects)
 
 
 # MISP attribute type -> our indicator type.
@@ -506,6 +514,125 @@ def fetch_feed_content(
     return body.decode("utf-8", errors="replace")
 
 
+# ---------------------------------------------------------------------------
+# TAXII 2.1
+# ---------------------------------------------------------------------------
+TAXII_MEDIA_TYPE = "application/taxii+json;version=2.1"
+MAX_TAXII_PAGES = 50
+
+
+def _taxii_headers(feed_auth_header: str | None) -> dict[str, str]:
+    headers = {"Accept": TAXII_MEDIA_TYPE}
+    if feed_auth_header and ":" in feed_auth_header:
+        name, _, val = feed_auth_header.partition(":")
+        headers[name.strip()] = val.strip()
+    return headers
+
+
+def _rfc3339(value: datetime) -> str:
+    """TAXII `added_after` timestamp: RFC3339 UTC with a trailing Z."""
+    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def poll_taxii_collection(
+    url: str,
+    *,
+    auth_header: str | None = None,
+    added_after: datetime | None = None,
+    http_client: httpx.Client | None = None,
+    max_pages: int = MAX_TAXII_PAGES,
+) -> list[dict[str, Any]]:
+    """Poll a TAXII 2.1 collection objects endpoint and return STIX objects.
+
+    Follows the envelope's ``more``/``next`` pagination and, when
+    ``added_after`` is given, requests only objects added since then
+    (incremental polling). SSRF-guarded and bounded by ``max_pages`` and the
+    per-sync indicator cap.
+    """
+    if not url:
+        raise FeedParseError("TAXII feed has no collection URL")
+    assert_safe_webhook_url(url)
+    headers = _taxii_headers(auth_header)
+    client = http_client or httpx.Client(timeout=FETCH_TIMEOUT_SECONDS)
+
+    params: dict[str, str] = {}
+    if added_after is not None:
+        params["added_after"] = _rfc3339(added_after)
+
+    objects: list[dict[str, Any]] = []
+    next_cursor: str | None = None
+    for _ in range(max_pages):
+        page_params = dict(params)
+        if next_cursor:
+            page_params["next"] = next_cursor
+        resp = client.get(url, headers=headers, params=page_params)
+        resp.raise_for_status()
+        envelope = resp.json()
+        if not isinstance(envelope, dict):
+            raise FeedParseError("TAXII response is not a JSON envelope")
+        page_objects = envelope.get("objects", [])
+        if isinstance(page_objects, list):
+            objects.extend(o for o in page_objects if isinstance(o, dict))
+        if len(objects) >= MAX_INDICATORS_PER_SYNC:
+            break
+        if not envelope.get("more"):
+            break
+        next_cursor = envelope.get("next")
+        if not next_cursor:
+            break
+    return objects
+
+
+def discover_taxii_collections(
+    api_root_url: str,
+    *,
+    auth_header: str | None = None,
+    http_client: httpx.Client | None = None,
+) -> list[dict[str, Any]]:
+    """List collections under a TAXII 2.1 API root (`{api_root}/collections/`).
+
+    Returns each collection's id/title/description plus a ready-to-use
+    ``objects_url`` to configure a feed with. SSRF-guarded.
+    """
+    base = api_root_url.rstrip("/")
+    collections_url = base + "/collections/"
+    assert_safe_webhook_url(collections_url)
+    client = http_client or httpx.Client(timeout=FETCH_TIMEOUT_SECONDS)
+    resp = client.get(collections_url, headers=_taxii_headers(auth_header))
+    resp.raise_for_status()
+    body = resp.json()
+    raw = body.get("collections", []) if isinstance(body, dict) else []
+    out: list[dict[str, Any]] = []
+    for c in raw:
+        if not isinstance(c, dict) or not c.get("id"):
+            continue
+        cid = str(c["id"])
+        out.append(
+            {
+                "id": cid,
+                "title": c.get("title"),
+                "description": c.get("description"),
+                "can_read": bool(c.get("can_read", True)),
+                "media_types": c.get("media_types", []),
+                "objects_url": f"{base}/collections/{cid}/objects/",
+            }
+        )
+    return out
+
+
+def _sync_taxii(
+    feed: ThreatFeed, http_client: httpx.Client | None
+) -> list[IndicatorDraft]:
+    objects = poll_taxii_collection(
+        feed.url or "",
+        auth_header=feed.auth_header,
+        added_after=feed.last_synced_at,
+        http_client=http_client,
+    )
+    return parse_stix_objects(objects)
+
+
 def sync_feed(
     session: Session,
     feed: ThreatFeed,
@@ -528,8 +655,11 @@ def sync_feed(
         return {"created": 0, "updated": 0, "status": FeedSyncStatus.OK.value}
 
     try:
-        content = fetch_feed_content(feed, http_client)
-        drafts = parse_feed(content, feed)
+        if feed.format == FeedFormat.TAXII:
+            drafts = _sync_taxii(feed, http_client)
+        else:
+            content = fetch_feed_content(feed, http_client)
+            drafts = parse_feed(content, feed)
         created, updated = upsert_indicators(
             session, org_id=feed.organization_id, feed=feed, drafts=drafts, now=now
         )
@@ -726,10 +856,13 @@ __all__ = [
     "IndicatorIndex",
     "IndicatorMeta",
     "build_index",
+    "discover_taxii_collections",
     "fetch_feed_content",
     "match_activity",
     "normalize_indicator",
     "parse_feed",
+    "parse_stix_objects",
+    "poll_taxii_collection",
     "severity_rank",
     "sync_feed",
     "upsert_indicators",

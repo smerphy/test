@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +26,8 @@ from app.models import (
     ThreatIndicator,
 )
 from app.schemas import (
+    TaxiiCollectionOut,
+    TaxiiDiscoverIn,
     ThreatFeedIn,
     ThreatFeedOut,
     ThreatFeedSyncResult,
@@ -33,7 +36,11 @@ from app.schemas import (
     ThreatIndicatorOut,
 )
 from app.services.egress import EgressBlocked, assert_safe_webhook_url
-from app.services.threat_intel import normalize_indicator, sync_feed
+from app.services.threat_intel import (
+    discover_taxii_collections,
+    normalize_indicator,
+    sync_feed,
+)
 
 router = APIRouter(tags=["threat-intel"])
 
@@ -163,6 +170,33 @@ def sync_now(
     result = sync_feed(session, feed)
     session.flush()
     return ThreatFeedSyncResult(**result)
+
+
+# --- TAXII 2.1 discovery ----------------------------------------------------
+@router.post("/threat/taxii/discover", response_model=list[TaxiiCollectionOut])
+def discover_collections(
+    body: TaxiiDiscoverIn,
+    org: Organization = Depends(current_org),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+) -> list[TaxiiCollectionOut]:
+    """List the collections under a TAXII 2.1 API root so an admin can pick
+    one to configure as a feed. Each result carries a ready-to-use
+    `objects_url`."""
+    _validate_feed_url(body.url)
+    try:
+        collections = discover_taxii_collections(
+            body.url, auth_header=body.auth_header
+        )
+    except EgressBlocked as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"TAXII server error: {exc}",
+        ) from exc
+    return [TaxiiCollectionOut(**c) for c in collections]
 
 
 # --- indicators -------------------------------------------------------------

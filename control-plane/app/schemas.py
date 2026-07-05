@@ -678,3 +678,21 @@ class ThreatIndicatorOut(BaseModel):
     last_seen: datetime
     expires_at: datetime | None
     created_at: datetime
+
+
+class TaxiiDiscoverIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # TAXII 2.1 API root URL, e.g. https://taxii.example.com/api1
+    url: str = Field(..., min_length=1, max_length=2048)
+    auth_header: str | None = Field(default=None, max_length=1024)
+
+
+class TaxiiCollectionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    title: str | None = None
+    description: str | None = None
+    can_read: bool = True
+    media_types: list[str] = Field(default_factory=list)
+    # Ready-to-use collection objects endpoint to configure a feed with.
+    objects_url: str
