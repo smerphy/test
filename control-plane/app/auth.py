@@ -41,15 +41,15 @@ def _check_api_key(api_key: str | None, settings: Settings) -> None:
         )
 
 
-def current_user(
-    request: Request,
-    session: Session = Depends(get_session),
+def _resolve_session_user(
+    request: Request, session: Session, *, enforce_mfa: bool
 ) -> User | None:
-    """Return the signed-in User from the session, if any.
+    """Resolve the signed-in User, applying lifecycle + session guards.
 
-    A deprovisioned (``active=False``) user is denied, and a session whose
-    stamped epoch no longer matches the user's ``session_epoch`` is treated as
-    revoked — this is how SCIM deprovision and "log out everywhere" take effect.
+    A deprovisioned (``active=False``) user is denied; a session whose stamped
+    epoch != the user's ``session_epoch`` is revoked (SCIM deprovision / "log
+    out everywhere"); and when ``enforce_mfa`` an MFA-enabled user must have
+    completed the step-up (``mfa_ok``) in this session.
     """
     user_id = request.session.get("user_id")
     if not user_id:
@@ -59,7 +59,26 @@ def current_user(
         return None
     if request.session.get("epoch", 0) != user.session_epoch:
         return None
+    if enforce_mfa and user.mfa_enabled and not request.session.get("mfa_ok"):
+        return None
     return user
+
+
+def current_user(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> User | None:
+    """The signed-in User for data access — enforces the MFA step-up."""
+    return _resolve_session_user(request, session, enforce_mfa=True)
+
+
+def session_user(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> User | None:
+    """The signed-in User for identity/self-service (MFA setup, logout-all)
+    — skips the MFA step-up gate so a user can always complete verification."""
+    return _resolve_session_user(request, session, enforce_mfa=False)
 
 
 @dataclass(frozen=True)
@@ -220,4 +239,5 @@ __all__ = [
     "current_principal",
     "current_user",
     "require_role",
+    "session_user",
 ]

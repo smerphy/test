@@ -119,5 +119,10 @@ class User(IdMixin, TimestampMixin, Base):
     session_epoch: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    # TOTP multi-factor auth. `mfa_secret` is a base32 seed, encrypted at rest.
+    mfa_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    mfa_secret: Mapped[str | None] = mapped_column(String(255))
 
     organization: Mapped[Organization] = relationship(back_populates="users")

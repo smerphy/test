@@ -131,6 +131,11 @@ class Settings(BaseSettings):
     # OAuth (GitHub). When client_id is unset, /auth/* endpoints 503.
     github_client_id: str = Field(default="")
     github_client_secret: str = Field(default="")
+    # Generic OIDC SSO (Okta, Azure AD, Auth0, Keycloak, …). When issuer +
+    # client_id are unset, /auth/oidc/* endpoints 503.
+    oidc_issuer: str = Field(default="")
+    oidc_client_id: str = Field(default="")
+    oidc_client_secret: str = Field(default="")
     oauth_redirect_base_url: str = Field(default="http://localhost:8000")
     session_secret: str = Field(default=DEFAULT_SESSION_SECRET)
 

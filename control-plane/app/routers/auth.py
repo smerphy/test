@@ -15,11 +15,14 @@ import html
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import session_user
 from app.db import get_session
 from app.models import Organization, Role, User
+from app.services import mfa
 from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -144,18 +147,144 @@ def logout(request: Request) -> dict[str, str]:
 
 @router.post("/logout-all")
 def logout_all(
-    request: Request, session: Session = Depends(get_session)
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(session_user),
 ) -> dict[str, str]:
     """Revoke every session for the signed-in user (bump their epoch), then
     clear this one. Cookies issued before now stop working."""
-    from app.auth import current_user
-
-    user = current_user(request, session)
     if user is not None:
         user.session_epoch += 1
         session.flush()
     request.session.clear()
     return {"status": "all_sessions_revoked"}
+
+
+# --- MFA (TOTP) -------------------------------------------------------------
+class MfaCodeIn(BaseModel):
+    code: str
+
+
+def _require_session_user(user: User | None) -> User:
+    if user is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, detail="sign in first"
+        )
+    return user
+
+
+@router.post("/mfa/enroll")
+def mfa_enroll(
+    session: Session = Depends(get_session),
+    user: User | None = Depends(session_user),
+) -> dict[str, str]:
+    """Begin TOTP enrollment: returns the secret + otpauth URI. MFA is not
+    active until /auth/mfa/verify succeeds with a code."""
+    u = _require_session_user(user)
+    secret, uri = mfa.begin_enroll(u)
+    session.flush()
+    return {"secret": secret, "otpauth_uri": uri}
+
+
+@router.post("/mfa/verify")
+def mfa_verify(
+    body: MfaCodeIn,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(session_user),
+) -> dict[str, bool]:
+    """Confirm enrollment (or complete step-up at login) with a TOTP code."""
+    u = _require_session_user(user)
+    ok = mfa.confirm(u, body.code) if not u.mfa_enabled else mfa.check(u, body.code)
+    if ok:
+        request.session["mfa_ok"] = True
+        session.flush()
+    return {"verified": ok}
+
+
+@router.post("/mfa/disable")
+def mfa_disable(
+    body: MfaCodeIn,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(session_user),
+) -> dict[str, bool]:
+    u = _require_session_user(user)
+    disabled = mfa.disable(u, body.code)
+    session.flush()
+    return {"disabled": disabled}
+
+
+# --- generic OIDC SSO -------------------------------------------------------
+def _oidc_configured(settings: Settings) -> bool:
+    return bool(
+        settings.oidc_issuer
+        and settings.oidc_client_id
+        and settings.oidc_client_secret
+    )
+
+
+def _ensure_oidc_registered(settings: Settings) -> None:
+    if "oidc" in _oauth._clients or not _oidc_configured(settings):
+        return
+    _oauth.register(
+        name="oidc",
+        client_id=settings.oidc_client_id,
+        client_secret=settings.oidc_client_secret,
+        server_metadata_url=(
+            settings.oidc_issuer.rstrip("/")
+            + "/.well-known/openid-configuration"
+        ),
+        client_kwargs={"scope": "openid email profile"},
+    )
+
+
+@router.get("/oidc/login")
+async def oidc_login(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> RedirectResponse:
+    if not _oidc_configured(settings):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail="OIDC not configured"
+        )
+    _ensure_oidc_registered(settings)
+    redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oidc/callback"
+    redirect: RedirectResponse = await _oauth.oidc.authorize_redirect(
+        request, redirect_uri
+    )
+    return redirect
+
+
+@router.get("/oidc/callback")
+async def oidc_callback(
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    if not _oidc_configured(settings):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail="OIDC not configured"
+        )
+    _ensure_oidc_registered(settings)
+    try:
+        token = await _oauth.oidc.authorize_access_token(request)
+    except OAuthError as exc:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, detail=f"oidc failed: {exc}"
+        ) from exc
+    userinfo = token.get("userinfo") or {}
+    email = userinfo.get("email")
+    if not email:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="no email in OIDC claims"
+        )
+    user = _upsert_user(session, email=email, name=userinfo.get("name"))
+    request.session["user_id"] = user.id
+    request.session["epoch"] = user.session_epoch
+    # Fresh login: MFA step-up (if enabled) is required before data access.
+    request.session.pop("mfa_ok", None)
+    return HTMLResponse(
+        f'<p>Signed in as {html.escape(email)}. <a href="/">Continue</a>.</p>'
+    )
 
 
 def _upsert_user(session: Session, *, email: str, name: str | None) -> User:
