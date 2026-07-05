@@ -126,6 +126,25 @@ def test_users_me_404_for_api_key(client: TestClient) -> None:
     assert client.get("/users/me").status_code == 404
 
 
+def test_whoami_reports_role_for_api_key(
+    monkeypatch, app, org: Organization
+) -> None:
+    s = get_settings()
+    monkeypatch.setattr(s, "api_keys", ["ro-key"])
+    monkeypatch.setattr(s, "api_key_orgs", {"ro-key": "acme"})
+    monkeypatch.setattr(s, "api_key_roles", {"ro-key": "viewer"})
+
+    c = TestClient(app)
+    c.headers.update({"X-API-Key": "ro-key", "X-Org-Slug": "acme"})
+    r = c.get("/whoami")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["kind"] == "api_key"
+    assert body["role"] == "viewer"
+    assert body["organization_slug"] == "acme"
+    assert body["user_id"] is None
+
+
 def test_owner_manages_roles_and_last_owner_is_protected(
     monkeypatch, app, session: Session, org: Organization
 ) -> None:

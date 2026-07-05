@@ -199,7 +199,34 @@ export const api = {
   listQuarantines: () => call<Quarantine[]>("/quarantines/active"),
   liftQuarantine: (id: string) =>
     call<Quarantine>(`/quarantines/${id}/lift`, { method: "POST" }),
+
+  // RBAC
+  whoami: () => call<WhoAmI>("/whoami"),
+  listMembers: () => call<Member[]>("/users"),
+  updateMember: (id: string, body: { role?: Role; name?: string }) =>
+    call<Member>(`/users/${id}`, { method: "PATCH", body }),
 };
+
+export type Role = "viewer" | "analyst" | "admin" | "owner";
+
+export interface WhoAmI {
+  kind: "user" | "api_key";
+  role: Role;
+  organization_id: string;
+  organization_slug: string;
+  user_id: string | null;
+  email: string | null;
+  name: string | null;
+}
+
+export interface Member {
+  id: string;
+  email: string;
+  name: string | null;
+  role: Role;
+  organization_id: string;
+  created_at: string;
+}
 
 export type FindingSeverity = "info" | "low" | "medium" | "high" | "critical";
 export type FindingStatus = "open" | "triaging" | "resolved" | "false_positive";

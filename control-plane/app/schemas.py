@@ -74,6 +74,24 @@ class UserUpdateIn(BaseModel):
     name: str | None = Field(default=None, max_length=255)
 
 
+class WhoAmIOut(BaseModel):
+    """The calling principal's identity + effective RBAC role.
+
+    Works for both credential paths, so the web console can gate its UI on
+    the role even when it authenticates via a shared API key (``kind`` is
+    ``api_key`` and the user fields are null in that case).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    kind: str
+    role: Role
+    organization_id: str
+    organization_slug: str
+    user_id: str | None = None
+    email: str | None = None
+    name: str | None = None
+
+
 class ProjectIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(..., min_length=1, max_length=255)

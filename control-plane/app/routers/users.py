@@ -15,9 +15,37 @@ from app.auth import Principal, current_org, current_principal, require_role
 from app.db import get_session
 from app.deps import get_owned
 from app.models import Organization, Role, User
-from app.schemas import UserOut, UserUpdateIn
+from app.schemas import UserOut, UserUpdateIn, WhoAmIOut
 
 router = APIRouter(tags=["users"])
+
+
+@router.get("/whoami", response_model=WhoAmIOut)
+def whoami(
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(current_principal),
+) -> WhoAmIOut:
+    """Identity + effective role of the calling principal.
+
+    Any authenticated caller may read this; the web console uses it to make
+    its navigation and actions role-aware.
+    """
+    email: str | None = None
+    name: str | None = None
+    if principal.user_id is not None:
+        user = session.get(User, principal.user_id)
+        if user is not None:
+            email = user.email
+            name = user.name
+    return WhoAmIOut(
+        kind=principal.kind,
+        role=principal.role,
+        organization_id=principal.org.id,
+        organization_slug=principal.org.slug,
+        user_id=principal.user_id,
+        email=email,
+        name=name,
+    )
 
 
 @router.get("/users", response_model=list[UserOut])
