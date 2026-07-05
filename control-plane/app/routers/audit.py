@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from annotated_types import Len
 from fastapi import APIRouter, Depends, Query, status
@@ -15,6 +15,7 @@ from app.db import get_session
 from app.models import AuditEvent, Organization, Role
 from app.schemas import AuditEventIn, AuditEventOut, AuditIngestResult
 from app.services.audit_ingest import ingest_event
+from app.services.event_store import archive_events
 
 router = APIRouter(tags=["audit"])
 
@@ -32,12 +33,16 @@ def ingest_events(
 ) -> AuditIngestResult:
     accepted = 0
     errors: list[str] = []
+    archived: list[dict[str, Any]] = []
     for raw in events:
         try:
             ingest_event(session, org_id=org.id, event=raw)
             accepted += 1
+            archived.append(raw.model_dump(mode="json"))
         except ValueError as exc:
             errors.append(f"seq={raw.seq}: {exc}")
+    # Stream accepted events to the cold tier (no-op unless configured).
+    archive_events("audit", org.id, archived)
     return AuditIngestResult(
         accepted=accepted, rejected=len(events) - accepted, errors=errors
     )

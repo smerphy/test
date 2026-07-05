@@ -60,6 +60,22 @@ class Settings(BaseSettings):
 
     structured_logs: bool = Field(default=True)
 
+    # --- Scale-out event store ------------------------------------------
+    # Cold tier: append-only NDJSON archive root for full-fidelity telemetry.
+    # In production point this at an object-store mount (s3fs / gcsfuse) so
+    # raw events are retained cheaply and indefinitely off the hot database.
+    # Empty = archival disabled (a no-op sink).
+    event_archive_dir: str = Field(default="")
+    # Whether the ingest path also gzips archived partitions.
+    event_archive_gzip: bool = Field(default=True)
+    # Hot-store retention: raw audit events older than this many days are
+    # rolled into queryable daily aggregates and pruned from the hot table,
+    # bounding the primary store under high volume. None = keep raw forever.
+    audit_retention_days: int | None = Field(default=None)
+    # Max raw rows a single retention pass rolls up + prunes (bounds the
+    # transaction; the scheduled task re-runs until caught up).
+    retention_batch_size: int = Field(default=50_000)
+
     # Celery broker + result backend. Default to in-process eager so tests
     # and `uvicorn` runs don't require Redis. Production: redis://...
     celery_broker_url: str = Field(default="memory://")

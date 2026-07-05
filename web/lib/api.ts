@@ -206,6 +206,9 @@ export const api = {
   updateMember: (id: string, body: { role?: Role; name?: string }) =>
     call<Member>(`/users/${id}`, { method: "PATCH", body }),
 
+  // Event store / telemetry
+  getTelemetryStats: () => call<TelemetryStats>("/telemetry/stats"),
+
   // Threat intelligence
   listFeeds: () => call<ThreatFeed[]>("/threat/feeds"),
   createFeed: (body: {
@@ -235,6 +238,18 @@ export const api = {
     description?: string;
   }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
 };
+
+export interface TelemetryStats {
+  hot_audit_events: number;
+  hot_metric_events: number;
+  oldest_hot_event: string | null;
+  newest_hot_event: string | null;
+  rollup_events_total: number;
+  rollup_days: number;
+  rollup_oldest_day: string | null;
+  archive_enabled: boolean;
+  retention_days: number | null;
+}
 
 export type IndicatorType =
   | "domain"

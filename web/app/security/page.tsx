@@ -1,5 +1,5 @@
 import { Card, Stat } from "@/components/Card";
-import { api, type SecurityOverview } from "@/lib/api";
+import { api, type SecurityOverview, type TelemetryStats } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +29,13 @@ function Bars({ data }: { data: Record<string, number> }) {
 
 export default async function SecurityPage() {
   let overview: SecurityOverview | null = null;
+  let telemetry: TelemetryStats | null = null;
   let error: string | null = null;
   try {
-    overview = await api.getOverview();
+    [overview, telemetry] = await Promise.all([
+      api.getOverview(),
+      api.getTelemetryStats(),
+    ]);
   } catch (e) {
     error = (e as Error).message;
   }
@@ -79,6 +83,35 @@ export default async function SecurityPage() {
             <Bars data={overview.activity_24h.decisions} />
           </Card>
         </>
+      )}
+
+      {telemetry && (
+        <Card title="Event store">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <Stat label="Hot audit events" value={telemetry.hot_audit_events} />
+            <Stat label="Hot metric events" value={telemetry.hot_metric_events} />
+            <Stat
+              label="Rolled-up events"
+              value={telemetry.rollup_events_total}
+            />
+            <Stat
+              label="Retention (days)"
+              value={telemetry.retention_days ?? "∞"}
+            />
+          </div>
+          <p className="mt-3 text-xs text-foreground/50">
+            Cold archive {telemetry.archive_enabled ? "enabled" : "disabled"}
+            {telemetry.oldest_hot_event
+              ? ` · hot window since ${new Date(
+                  telemetry.oldest_hot_event
+                ).toLocaleDateString()}`
+              : ""}
+            {telemetry.rollup_days
+              ? ` · ${telemetry.rollup_days} day(s) rolled up`
+              : ""}
+            .
+          </p>
+        </Card>
       )}
     </div>
   );

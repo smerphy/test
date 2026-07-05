@@ -45,6 +45,10 @@ celery_app.conf.beat_schedule = {
         "task": "praetor.threat_intel.sync_due",
         "schedule": 300.0,
     },
+    "apply-retention": {
+        "task": "praetor.telemetry.apply_retention",
+        "schedule": 86400.0,  # daily
+    },
 }
 
 

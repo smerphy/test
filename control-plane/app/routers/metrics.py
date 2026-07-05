@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from annotated_types import Len
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -19,6 +19,7 @@ from app.schemas import (
     MetricEventOut,
     MetricIngestResult,
 )
+from app.services.event_store import archive_events
 from app.services.metrics import aggregate_metrics, ingest_metric
 from app.services.prometheus_export import render_prometheus
 
@@ -38,12 +39,16 @@ def ingest_events(
 ) -> MetricIngestResult:
     accepted = 0
     errors: list[str] = []
+    archived: list[dict[str, Any]] = []
     for raw in events:
         try:
             ingest_metric(session, org_id=org.id, event=raw)
             accepted += 1
+            archived.append(raw.model_dump(mode="json"))
         except ValueError as exc:
             errors.append(f"{raw.agent_id}@{raw.timestamp.isoformat()}: {exc}")
+    # Stream accepted events to the cold tier (no-op unless configured).
+    archive_events("metric", org.id, archived)
     return MetricIngestResult(
         accepted=accepted, rejected=len(events) - accepted, errors=errors
     )

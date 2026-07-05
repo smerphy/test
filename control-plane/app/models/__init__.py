@@ -30,6 +30,7 @@ from app.models.policy import (
 )
 from app.models.quarantine import Quarantine, QuarantineSource
 from app.models.report import ComplianceReport, ReportStatus
+from app.models.rollup import AuditDailyRollup
 from app.models.threat_intel import (
     EXACT_MATCH_TYPES,
     TLP,
@@ -55,6 +56,7 @@ __all__ = [
     "AlertState",
     "ApprovalRequest",
     "ApprovalStatus",
+    "AuditDailyRollup",
     "AuditEvent",
     "ComplianceReport",
     "DetectionRule",

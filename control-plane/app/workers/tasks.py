@@ -24,7 +24,9 @@ from app.services.forward import forward_finding
 from app.services.metrics import ingest_metric
 from app.services.notify import deliver_approval_notification
 from app.services.report import generate_report
+from app.services.retention import apply_retention
 from app.services.threat_intel import sync_feed
+from app.settings import get_settings
 
 
 @celery_app.task(name="praetor.audit.process_batch")
@@ -124,6 +126,37 @@ def run_detections_task() -> dict[str, int]:
     }
 
 
+@celery_app.task(name="praetor.telemetry.apply_retention")
+def apply_retention_task() -> dict[str, int]:
+    """Roll up + prune aged raw audit events across every org.
+
+    Schedule via Celery beat (daily). No-op unless
+    `PRAETOR_AUDIT_RETENTION_DAYS` is set. Loops each org until caught up so a
+    large backlog is drained across bounded batches within one run.
+    """
+    settings = get_settings()
+    if settings.audit_retention_days is None:
+        return {"rolled": 0, "pruned": 0, "orgs": 0}
+    rolled = pruned = orgs = 0
+    with SessionLocal() as session:
+        org_ids = list(session.execute(select(Organization.id)).scalars())
+        for org_id in org_ids:
+            orgs += 1
+            for _ in range(1000):  # safety bound on batches per org per run
+                result = apply_retention(
+                    session,
+                    org_id=org_id,
+                    retention_days=settings.audit_retention_days,
+                    batch_size=settings.retention_batch_size,
+                )
+                rolled += result["rolled"]
+                pruned += result["pruned"]
+                session.commit()
+                if result["caught_up"]:
+                    break
+    return {"rolled": rolled, "pruned": pruned, "orgs": orgs}
+
+
 @celery_app.task(name="praetor.threat_intel.sync_due")
 def sync_threat_feeds_task() -> dict[str, int]:
     """Sync every enabled remote feed whose refresh interval has elapsed.
@@ -195,6 +228,7 @@ def evaluate_all_alerts_task() -> dict[str, int]:
 
 
 __all__ = [
+    "apply_retention_task",
     "evaluate_all_alerts_task",
     "expire_stale_approvals_task",
     "generate_report_task",
