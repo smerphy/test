@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     OPEN_FINDING_STATUSES,
     AuditEvent,
+    DetectionRule,
     Finding,
     FindingCategory,
     FindingSeverity,
@@ -268,6 +269,62 @@ def _detect_new_tool_anomaly(
     return drafts
 
 
+def _event_matches(row: _EventRow, spec: dict[str, Any]) -> bool:
+    pid = row.matched_policy_id or ""
+    prefix = spec.get("matched_policy_prefix")
+    contains = spec.get("matched_policy_contains")
+    return (
+        (not spec.get("decision") or row.decision == spec["decision"])
+        and (not prefix or pid.startswith(prefix))
+        and (not contains or contains in pid)
+        and (not spec.get("tool_name") or row.tool_name == spec["tool_name"])
+    )
+
+
+def _detect_custom_rules(
+    session: Session, org_id: str, rows: list[_EventRow]
+) -> list[FindingDraft]:
+    """Evaluate the org's enabled detection-as-code rules over the window."""
+    rules = list(
+        session.execute(
+            select(DetectionRule).where(
+                DetectionRule.organization_id == org_id,
+                DetectionRule.enabled.is_(True),
+            )
+        ).scalars()
+    )
+    drafts: list[FindingDraft] = []
+    for rule in rules:
+        spec = rule.spec or {}
+        group_by = spec.get("group_by", "session")
+        threshold = int(spec.get("threshold", 1))
+        groups: dict[str, list[_EventRow]] = defaultdict(list)
+        for r in rows:
+            if not _event_matches(r, spec):
+                continue
+            key = r.agent_id if group_by == "agent" else r.session_id
+            groups[key].append(r)
+        for key, evs in groups.items():
+            if len(evs) < threshold:
+                continue
+            drafts.append(
+                FindingDraft(
+                    rule_id=rule.name,
+                    title=f"{rule.name}: {len(evs)} matching events for {group_by}={key}",
+                    severity=FindingSeverity(rule.severity),
+                    category=FindingCategory(rule.category),
+                    dedup_key=f"custom:{rule.id}:{key}",
+                    count=len(evs),
+                    agent_id=evs[0].agent_id,
+                    session_id=None if group_by == "agent" else key,
+                    evidence={"event_ids": [e.id for e in evs][:50]},
+                    atlas_technique=rule.atlas_technique,
+                    owasp_llm=rule.owasp_llm,
+                )
+            )
+    return drafts
+
+
 def _upsert_finding(
     session: Session, org_id: str, draft: FindingDraft, now: datetime
 ) -> tuple[Finding, bool]:
@@ -330,6 +387,7 @@ def run_detections(
     drafts += _detect_injection_exfil_killchain(rows)
     drafts += _detect_approval_abuse(rows)
     drafts += _detect_new_tool_anomaly(session, org_id, rows, baseline_since, since)
+    drafts += _detect_custom_rules(session, org_id, rows)
 
     created = updated = 0
     new_findings: list[Finding] = []

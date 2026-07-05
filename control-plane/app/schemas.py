@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from praetor_engine.audit_hash import canonical_timestamp as _canonical_timestamp
 from praetor_engine.types import Decision
@@ -257,6 +257,62 @@ class FindingUpdateIn(BaseModel):
     assignee: str | None = Field(default=None, max_length=255)
     note: str | None = Field(default=None, max_length=4000)
     resolved_by: str | None = Field(default=None, max_length=255)
+
+
+class DetectionRuleSpec(BaseModel):
+    """A bounded, structured match over audit events (no code, no regex).
+
+    All present conditions must hold (AND). Matching events are grouped by
+    `group_by`; a group meeting `threshold` raises a finding.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    decision: str | None = Field(default=None, max_length=32)
+    matched_policy_prefix: str | None = Field(default=None, max_length=255)
+    matched_policy_contains: str | None = Field(default=None, max_length=255)
+    tool_name: str | None = Field(default=None, max_length=255)
+    group_by: Literal["agent", "session"] = "session"
+    threshold: int = Field(default=1, ge=1, le=100_000)
+    window_minutes: int = Field(default=60, ge=1, le=1440)
+
+    @model_validator(mode="after")
+    def _require_a_condition(self) -> DetectionRuleSpec:
+        if not any(
+            [
+                self.decision,
+                self.matched_policy_prefix,
+                self.matched_policy_contains,
+                self.tool_name,
+            ]
+        ):
+            raise ValueError("spec must set at least one match condition")
+        return self
+
+
+class DetectionRuleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.-]+$")
+    description: str | None = Field(default=None, max_length=1024)
+    enabled: bool = True
+    severity: FindingSeverity
+    category: FindingCategory
+    spec: DetectionRuleSpec
+    atlas_technique: str | None = Field(default=None, max_length=64)
+    owasp_llm: str | None = Field(default=None, max_length=32)
+
+
+class DetectionRuleOut(BaseModel):
+    model_config = _BASE
+    id: str
+    name: str
+    description: str | None
+    enabled: bool
+    severity: FindingSeverity
+    category: FindingCategory
+    spec: dict[str, Any]
+    atlas_technique: str | None
+    owasp_llm: str | None
+    created_at: datetime
 
 
 # ----------------------------------------------------------------

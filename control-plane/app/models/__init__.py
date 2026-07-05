@@ -11,6 +11,7 @@ from app.models.alert import (
 )
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.audit import AuditEvent
+from app.models.detection_rule import DetectionRule
 from app.models.finding import (
     OPEN_FINDING_STATUSES,
     Finding,
@@ -45,6 +46,7 @@ __all__ = [
     "ApprovalStatus",
     "AuditEvent",
     "ComplianceReport",
+    "DetectionRule",
     "Finding",
     "FindingCategory",
     "FindingSeverity",

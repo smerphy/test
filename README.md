@@ -32,10 +32,12 @@ Three complementary subsystems share one control plane:
    automatically on a CRITICAL finding when auto-response is enabled. Runs
    on a Celery beat schedule and on demand via `POST /findings/run`.
    Findings above a per-org severity threshold are **forwarded** to
-   external SIEM/SOAR systems as OCSF-flavored events. A **SOC console
-   backend** (`GET /overview`, `GET /timeline/session/{id}`) and **fleet
-   management** (SDK heartbeat enrollment → `GET /agents` with health)
-   round out the platform.
+   external SIEM/SOAR systems as OCSF-flavored events. Orgs also author
+   their own **detection-as-code** rules (`/detection-rules`) — a bounded,
+   structured match (no code/regex, never a ReDoS/RCE vector) run alongside
+   the built-ins. A **SOC console backend** (`GET /overview`, `GET
+   /timeline/session/{id}`) and **fleet management** (SDK heartbeat
+   enrollment → `GET /agents` with health) round out the platform.
 
 These layers feed the same audit + reports surface so security, SRE,
 and compliance teams work off one source of truth. Apache 2.0.
