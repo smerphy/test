@@ -18,6 +18,7 @@ class TestListAndPath:
             "iso_42001",
             "eu_ai_act",
             "agent_abuse_patterns",
+            "prompt_injection",
         }
         # Sorted output for stable CLI display.
         assert names == sorted(names)

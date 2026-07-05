@@ -16,8 +16,11 @@ Two complementary subsystems share one control plane:
    evaluates a declarative policy on every tool call and returns
    `allow` · `deny` · `transform` · `require_approval` with a
    tamper-evident audit log of every decision. Ships starter
-   compliance bundles for NIST AI RMF, ISO/IEC 42001, EU AI Act, and
-   an `agent_abuse_patterns` hardening bundle (36 rules).
+   compliance bundles for NIST AI RMF, ISO/IEC 42001, EU AI Act, an
+   `agent_abuse_patterns` hardening bundle (36 rules), and a
+   `prompt_injection` bundle (18 rules) detecting prompt-injection,
+   jailbreak, and indirect-injection / data-exfil patterns
+   (OWASP LLM01/LLM02/LLM06).
 
 Both layers feed the same audit + reports surface so security, SRE,
 and compliance teams work off one source of truth. Apache 2.0.
