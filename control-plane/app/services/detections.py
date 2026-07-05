@@ -24,7 +24,9 @@ from app.models import (
     Finding,
     FindingCategory,
     FindingSeverity,
+    Organization,
 )
+from app.services.quarantine import auto_quarantine_for_finding
 
 # Tunables (would move to per-org config later).
 DEFAULT_WINDOW_MINUTES = 60
@@ -268,9 +270,9 @@ def _detect_new_tool_anomaly(
 
 def _upsert_finding(
     session: Session, org_id: str, draft: FindingDraft, now: datetime
-) -> bool:
+) -> tuple[Finding, bool]:
     """Insert the draft, or update the live finding for the same entity.
-    Returns True if a new finding was created."""
+    Returns (finding, created)."""
     existing = session.execute(
         select(Finding)
         .where(
@@ -287,26 +289,25 @@ def _upsert_finding(
         existing.evidence = draft.evidence
         existing.severity = draft.severity
         existing.title = draft.title
-        return False
-    session.add(
-        Finding(
-            organization_id=org_id,
-            rule_id=draft.rule_id,
-            title=draft.title,
-            severity=draft.severity,
-            category=draft.category,
-            agent_id=draft.agent_id,
-            session_id=draft.session_id,
-            dedup_key=draft.dedup_key,
-            count=draft.count,
-            first_seen=now,
-            last_seen=now,
-            evidence=draft.evidence,
-            atlas_technique=draft.atlas_technique,
-            owasp_llm=draft.owasp_llm,
-        )
+        return existing, False
+    finding = Finding(
+        organization_id=org_id,
+        rule_id=draft.rule_id,
+        title=draft.title,
+        severity=draft.severity,
+        category=draft.category,
+        agent_id=draft.agent_id,
+        session_id=draft.session_id,
+        dedup_key=draft.dedup_key,
+        count=draft.count,
+        first_seen=now,
+        last_seen=now,
+        evidence=draft.evidence,
+        atlas_technique=draft.atlas_technique,
+        owasp_llm=draft.owasp_llm,
     )
-    return True
+    session.add(finding)
+    return finding, True
 
 
 def run_detections(
@@ -331,13 +332,25 @@ def run_detections(
     drafts += _detect_new_tool_anomaly(session, org_id, rows, baseline_since, since)
 
     created = updated = 0
+    new_findings: list[Finding] = []
     for draft in drafts:
-        if _upsert_finding(session, org_id, draft, now):
+        finding, was_created = _upsert_finding(session, org_id, draft, now)
+        if was_created:
             created += 1
+            new_findings.append(finding)
         else:
             updated += 1
+    session.flush()  # assign ids before auto-response references them
+
+    # EDR auto-response: isolate the entity behind each new CRITICAL finding.
+    quarantined = 0
+    org = session.get(Organization, org_id)
+    if org is not None:
+        for finding in new_findings:
+            if auto_quarantine_for_finding(session, org, finding) is not None:
+                quarantined += 1
     session.flush()
-    return {"created": created, "updated": updated}
+    return {"created": created, "updated": updated, "quarantined": quarantined}
 
 
 __all__ = ["FindingDraft", "run_detections"]

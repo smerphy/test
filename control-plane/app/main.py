@@ -16,6 +16,7 @@ from app.routers import (
     metrics,
     org,
     policies,
+    quarantine,
     reports,
 )
 from app.routers import auth as auth_router
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(org.router)
     app.include_router(findings.router)
+    app.include_router(quarantine.router)
     app.include_router(auth_router.router)
 
     @app.middleware("http")

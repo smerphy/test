@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -16,6 +16,11 @@ class Organization(IdMixin, TimestampMixin, Base):
     # to. Null = notifications disabled (the dashboard inbox is still the
     # source of truth).
     approval_webhook_url: Mapped[str | None] = mapped_column(String(1024))
+    # When true, a CRITICAL finding automatically quarantines its entity
+    # (EDR auto-response). Off by default — opt in per org.
+    auto_quarantine: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     users: Mapped[list[User]] = relationship(back_populates="organization")
     projects: Mapped[list[Project]] = relationship(back_populates="organization")  # type: ignore[name-defined]  # noqa: F821

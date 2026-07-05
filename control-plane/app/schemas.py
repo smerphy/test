@@ -7,7 +7,13 @@ from typing import Any
 
 from praetor_engine.audit_hash import canonical_timestamp as _canonical_timestamp
 from praetor_engine.types import Decision
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    model_validator,
+)
 
 from app.models import (
     AlertAggregation,
@@ -20,6 +26,7 @@ from app.models import (
     FindingCategory,
     FindingSeverity,
     FindingStatus,
+    QuarantineSource,
     ReportStatus,
     RolloutState,
 )
@@ -33,6 +40,7 @@ class OrganizationOut(BaseModel):
     name: str
     slug: str
     approval_webhook_url: str | None = None
+    auto_quarantine: bool = False
 
 
 class OrganizationUpdateIn(BaseModel):
@@ -40,6 +48,8 @@ class OrganizationUpdateIn(BaseModel):
     # Slack-compatible incoming-webhook URL for pending-approval
     # notifications. Pass null to disable.
     approval_webhook_url: str | None = Field(default=None, max_length=1024)
+    # Enable EDR auto-response: CRITICAL findings auto-quarantine their entity.
+    auto_quarantine: bool | None = None
 
 
 class ProjectIn(BaseModel):
@@ -242,6 +252,48 @@ class FindingUpdateIn(BaseModel):
     assignee: str | None = Field(default=None, max_length=255)
     note: str | None = Field(default=None, max_length=4000)
     resolved_by: str | None = Field(default=None, max_length=255)
+
+
+# ----------------------------------------------------------------
+# Quarantines (EDR response)
+# ----------------------------------------------------------------
+
+
+class QuarantineCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str | None = Field(default=None, max_length=255)
+    session_id: str | None = Field(default=None, max_length=255)
+    reason: str = Field(..., min_length=1, max_length=1024)
+    created_by: str | None = Field(default=None, max_length=255)
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _require_entity(self) -> QuarantineCreateIn:
+        if not self.agent_id and not self.session_id:
+            raise ValueError("at least one of agent_id or session_id is required")
+        return self
+
+
+class QuarantineOut(BaseModel):
+    model_config = _BASE
+    id: str
+    agent_id: str | None
+    session_id: str | None
+    reason: str
+    source: QuarantineSource
+    finding_id: str | None
+    active: bool
+    expires_at: datetime | None
+    created_by: str | None
+    created_at: datetime
+    lifted_at: datetime | None
+    lifted_by: str | None
+
+
+class QuarantineCheckOut(BaseModel):
+    quarantined: bool
+    reason: str | None = None
+    quarantine_id: str | None = None
 
 
 class ComplianceReportIn(BaseModel):

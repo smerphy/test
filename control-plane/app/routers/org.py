@@ -39,5 +39,7 @@ def update_org(
                     detail=f"approval_webhook_url rejected: {exc}",
                 ) from exc
         org.approval_webhook_url = url
+    if "auto_quarantine" in fields and fields["auto_quarantine"] is not None:
+        org.auto_quarantine = fields["auto_quarantine"]
     session.flush()
     return org

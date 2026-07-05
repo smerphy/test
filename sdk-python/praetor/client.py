@@ -20,6 +20,7 @@ from praetor_engine.types import (
 from praetor.approval import ApprovalHandler, ControlPlaneApprovalHandler
 from praetor.audit import AuditSink, JsonlAuditSink, NullAuditSink, RemoteShipper
 from praetor.errors import PolicyDenied
+from praetor.quarantine import QuarantineGuard
 from praetor.transport import HttpTransport
 
 
@@ -46,6 +47,7 @@ class PraetorClient:
         org_slug: str | None = None,
         approval_handler: ApprovalHandler | None = None,
         default_agent_id: str | None = None,
+        enable_quarantine: bool = True,
     ) -> None:
         if policies is not None and bundle_path is not None:
             raise ValueError("pass policies or bundle_path, not both")
@@ -75,6 +77,15 @@ class PraetorClient:
         self._approval = approval_handler
         if self._approval is None and control_plane_url is not None:
             self._approval = ControlPlaneApprovalHandler(
+                control_plane_url, api_key=api_key, org_slug=org_slug
+            )
+
+        # EDR kill-switch: when a control plane is configured, consult active
+        # quarantines before evaluating policy so an isolated agent/session is
+        # denied inline.
+        self._quarantine: QuarantineGuard | None = None
+        if control_plane_url is not None and enable_quarantine:
+            self._quarantine = QuarantineGuard(
                 control_plane_url, api_key=api_key, org_slug=org_slug
             )
 
@@ -142,6 +153,19 @@ class PraetorClient:
             session=SessionInfo(id=session_id),
             context=dict(context or {}),
         )
+
+        # EDR kill-switch: a quarantined agent/session is denied before policy
+        # evaluation. Still audited so the isolation is on the record.
+        if self._quarantine is not None:
+            reason = self._quarantine.check(resolved_agent_id, session_id)
+            if reason is not None:
+                result = DecisionResult(
+                    decision=Decision.DENY,
+                    reason=f"quarantined: {reason}",
+                    matched_policy_id="__quarantine__",
+                )
+                self._audit.record(policy_input, result)
+                return result
 
         result = self._evaluator.evaluate(policy_input)
 

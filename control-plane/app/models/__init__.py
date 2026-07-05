@@ -26,6 +26,7 @@ from app.models.policy import (
     Project,
     RolloutState,
 )
+from app.models.quarantine import Quarantine, QuarantineSource
 from app.models.report import ComplianceReport, ReportStatus
 
 __all__ = [
@@ -52,6 +53,8 @@ __all__ = [
     "PolicyRollout",
     "PolicyVersion",
     "Project",
+    "Quarantine",
+    "QuarantineSource",
     "ReportStatus",
     "RolloutState",
     "User",

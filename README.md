@@ -21,14 +21,16 @@ Three complementary subsystems share one control plane:
    `prompt_injection` bundle (18 rules) detecting prompt-injection,
    jailbreak, and indirect-injection / data-exfil patterns
    (OWASP LLM01/LLM02/LLM06).
-3. **Detection & findings (SIEM / EDR)** — a detection engine correlates
+3. **Detection & response (SIEM / EDR)** — a detection engine correlates
    the audit + metric stream into **security findings** (prompt-injection
    attempts, repeated-denial bursts, injection→exfil kill-chains,
    approval-abuse probing, new-tool/UEBA anomalies), each mapped to MITRE
    ATLAS / OWASP LLM with a triage lifecycle (open → triaging → resolved /
-   false-positive). Runs on a schedule via Celery beat and on demand via
-   `POST /findings/run`; analysts work findings through `GET/PATCH
-   /findings`.
+   false-positive). Findings drive **response**: a **quarantine
+   kill-switch** isolates an agent or session (the SDK denies its tool
+   calls inline via `QuarantineGuard`), applied manually by an analyst or
+   automatically on a CRITICAL finding when auto-response is enabled. Runs
+   on a Celery beat schedule and on demand via `POST /findings/run`.
 
 These layers feed the same audit + reports surface so security, SRE,
 and compliance teams work off one source of truth. Apache 2.0.

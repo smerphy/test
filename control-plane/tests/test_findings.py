@@ -107,4 +107,4 @@ def test_finding_is_org_scoped(
 def test_run_detections_endpoint(client: TestClient) -> None:
     r = client.post("/findings/run")
     assert r.status_code == 200
-    assert set(r.json()) == {"created", "updated"}
+    assert {"created", "updated"} <= set(r.json())

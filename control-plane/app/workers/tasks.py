@@ -97,7 +97,7 @@ def expire_stale_approvals_task() -> int:
 @celery_app.task(name="praetor.detections.run_all")
 def run_detections_task() -> dict[str, int]:
     """Run the detection engine across every org. Schedule via Celery beat."""
-    created = updated = 0
+    created = updated = quarantined = 0
     with SessionLocal() as session:
         org_ids = list(
             session.execute(select(Organization.id)).scalars()
@@ -106,8 +106,9 @@ def run_detections_task() -> dict[str, int]:
             result = run_detections(session, org_id=org_id)
             created += result["created"]
             updated += result["updated"]
+            quarantined += result.get("quarantined", 0)
         session.commit()
-    return {"created": created, "updated": updated}
+    return {"created": created, "updated": updated, "quarantined": quarantined}
 
 
 @celery_app.task(name="praetor.alerts.evaluate_all")

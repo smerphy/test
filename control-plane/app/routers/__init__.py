@@ -6,6 +6,7 @@ from app.routers import (
     metrics,
     org,
     policies,
+    quarantine,
     reports,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "metrics",
     "org",
     "policies",
+    "quarantine",
     "reports",
 ]
