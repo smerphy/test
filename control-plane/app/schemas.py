@@ -41,6 +41,8 @@ class OrganizationOut(BaseModel):
     slug: str
     approval_webhook_url: str | None = None
     auto_quarantine: bool = False
+    finding_webhook_url: str | None = None
+    finding_min_severity: str = "high"
 
 
 class OrganizationUpdateIn(BaseModel):
@@ -50,6 +52,9 @@ class OrganizationUpdateIn(BaseModel):
     approval_webhook_url: str | None = Field(default=None, max_length=1024)
     # Enable EDR auto-response: CRITICAL findings auto-quarantine their entity.
     auto_quarantine: bool | None = None
+    # Forward new findings (>= finding_min_severity) to this webhook / SIEM.
+    finding_webhook_url: str | None = Field(default=None, max_length=1024)
+    finding_min_severity: FindingSeverity | None = None
 
 
 class ProjectIn(BaseModel):

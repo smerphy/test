@@ -21,6 +21,12 @@ class Organization(IdMixin, TimestampMixin, Base):
     auto_quarantine: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    # Forward new findings at/above `finding_min_severity` to this webhook
+    # (Slack / generic / SIEM HEC-style). Null = forwarding disabled.
+    finding_webhook_url: Mapped[str | None] = mapped_column(String(1024))
+    finding_min_severity: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="high", server_default="high"
+    )
 
     users: Mapped[list[User]] = relationship(back_populates="organization")
     projects: Mapped[list[Project]] = relationship(back_populates="organization")  # type: ignore[name-defined]  # noqa: F821

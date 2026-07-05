@@ -18,6 +18,7 @@ from app.services.alerts import evaluate_rule
 from app.services.approvals import expire_stale_approvals
 from app.services.audit_ingest import ingest_event
 from app.services.detections import run_detections
+from app.services.forward import forward_finding
 from app.services.metrics import ingest_metric
 from app.services.notify import deliver_approval_notification
 from app.services.report import generate_report
@@ -97,7 +98,7 @@ def expire_stale_approvals_task() -> int:
 @celery_app.task(name="praetor.detections.run_all")
 def run_detections_task() -> dict[str, int]:
     """Run the detection engine across every org. Schedule via Celery beat."""
-    created = updated = quarantined = 0
+    created = updated = quarantined = forwarded = 0
     with SessionLocal() as session:
         org_ids = list(
             session.execute(select(Organization.id)).scalars()
@@ -107,8 +108,17 @@ def run_detections_task() -> dict[str, int]:
             created += result["created"]
             updated += result["updated"]
             quarantined += result.get("quarantined", 0)
+            # Forward each new finding to the org's SIEM/webhook (best-effort).
+            for finding_id in result.get("new_finding_ids", []):
+                if forward_finding(session, finding_id):
+                    forwarded += 1
         session.commit()
-    return {"created": created, "updated": updated, "quarantined": quarantined}
+    return {
+        "created": created,
+        "updated": updated,
+        "quarantined": quarantined,
+        "forwarded": forwarded,
+    }
 
 
 @celery_app.task(name="praetor.alerts.evaluate_all")

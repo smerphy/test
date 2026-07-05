@@ -316,7 +316,7 @@ def run_detections(
     org_id: str,
     now: datetime | None = None,
     window_minutes: int = DEFAULT_WINDOW_MINUTES,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Run every detection rule for one org over the rolling window and
     upsert findings. Returns {created, updated}."""
     now = now or datetime.now(UTC)
@@ -350,7 +350,12 @@ def run_detections(
             if auto_quarantine_for_finding(session, org, finding) is not None:
                 quarantined += 1
     session.flush()
-    return {"created": created, "updated": updated, "quarantined": quarantined}
+    return {
+        "created": created,
+        "updated": updated,
+        "quarantined": quarantined,
+        "new_finding_ids": [f.id for f in new_findings],
+    }
 
 
 __all__ = ["FindingDraft", "run_detections"]

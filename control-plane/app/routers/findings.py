@@ -7,7 +7,7 @@ these endpoints are the analyst surface — the SIEM/EDR console's backend.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -98,11 +98,11 @@ def update_finding(
     return finding
 
 
-@router.post("/findings/run", response_model=dict[str, int])
+@router.post("/findings/run", response_model=dict[str, Any])
 def run_now(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
     window_minutes: Annotated[int, Query(ge=1, le=1440)] = 60,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Run the detection engine for this org immediately (returns created/updated)."""
     return run_detections(session, org_id=org.id, window_minutes=window_minutes)

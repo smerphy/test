@@ -41,5 +41,18 @@ def update_org(
         org.approval_webhook_url = url
     if "auto_quarantine" in fields and fields["auto_quarantine"] is not None:
         org.auto_quarantine = fields["auto_quarantine"]
+    if "finding_webhook_url" in fields:
+        url = fields["finding_webhook_url"]
+        if url:
+            try:
+                assert_safe_webhook_url(url)
+            except EgressBlocked as exc:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"finding_webhook_url rejected: {exc}",
+                ) from exc
+        org.finding_webhook_url = url
+    if "finding_min_severity" in fields and fields["finding_min_severity"] is not None:
+        org.finding_min_severity = str(fields["finding_min_severity"])
     session.flush()
     return org
