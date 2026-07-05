@@ -51,6 +51,7 @@ class PraetorClient:
         approval_handler: ApprovalHandler | None = None,
         default_agent_id: str | None = None,
         enable_quarantine: bool = True,
+        redact_pii: bool = False,
     ) -> None:
         if policies is not None and bundle_path is not None:
             raise ValueError("pass policies or bundle_path, not both")
@@ -67,7 +68,9 @@ class PraetorClient:
         if audit_sink is not None:
             self._audit = audit_sink
         elif audit_log_path is not None:
-            self._audit = JsonlAuditSink(audit_log_path)
+            # Redact PII pre-hash so tamper-evidence still holds. Callers who
+            # pass their own audit_sink control redaction on that sink.
+            self._audit = JsonlAuditSink(audit_log_path, redact_pii=redact_pii)
         else:
             self._audit = NullAuditSink()
 
@@ -155,7 +158,7 @@ class PraetorClient:
         suggested_severity: str | None = None,
         agent_id: str | None = None,
         session_id: str | None = None,
-        evidence: dict | None = None,
+        evidence: dict[str, Any] | None = None,
     ) -> None:
         """Report a security observation the agent found — even incidentally.
 
@@ -165,7 +168,7 @@ class PraetorClient:
         """
         if self._control_plane_base is None or self._heartbeat_client is None:
             return
-        body: dict = {"observation": observation}
+        body: dict[str, Any] = {"observation": observation}
         resolved = agent_id or self._default_agent_id
         if resolved:
             body["agent_id"] = resolved

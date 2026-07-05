@@ -31,6 +31,7 @@ from praetor_engine.audit_hash import (
 from praetor_engine.audit_hash import (
     canonical_timestamp as _canonical_timestamp,
 )
+from praetor_engine.redaction import redact_text, redact_value
 from praetor_engine.types import Decision, DecisionResult, PolicyInput
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer
 
@@ -105,8 +106,19 @@ def _build_event(
     policy_input: PolicyInput,
     decision: DecisionResult,
     now: datetime | None = None,
+    redact_pii: bool = False,
 ) -> AuditEvent:
     timestamp = now or datetime.now(UTC)
+    # Redact PII BEFORE hashing so the tamper-evident chain covers the redacted
+    # values (server-side redaction would break verification). The policy
+    # decision was already made on the original arguments.
+    tool_arguments: Any = policy_input.tool.arguments
+    reason = decision.reason
+    context: Any = policy_input.context
+    if redact_pii:
+        tool_arguments, _ = redact_value(dict(policy_input.tool.arguments))
+        reason, _ = redact_text(decision.reason)
+        context, _ = redact_value(dict(policy_input.context))
     # Build the body as a plain dict with canonical wire-format values.
     # Hashing over this dict directly (rather than re-serializing a
     # Pydantic model) keeps the hash language-agnostic: any writer that
@@ -117,13 +129,13 @@ def _build_event(
         "agent_id": policy_input.agent.id,
         "session_id": policy_input.session.id,
         "tool_name": policy_input.tool.name,
-        "tool_arguments": policy_input.tool.arguments,
+        "tool_arguments": tool_arguments,
         "tool_use_id": policy_input.tool.tool_use_id,
         "decision": decision.decision.value,
-        "reason": decision.reason,
+        "reason": reason,
         "matched_policy_id": decision.matched_policy_id,
         "suggested_transform": decision.suggested_transform,
-        "context": policy_input.context,
+        "context": context,
         "evaluator_version": _ENGINE_VERSION,
         "prev_hash": prev_hash,
     }
@@ -149,6 +161,7 @@ class JsonlAuditSink:
         path: Path | str,
         *,
         on_event: Callable[[AuditEvent], None] | None = None,
+        redact_pii: bool = False,
     ) -> None:
         # Accept a plain string path too — the documented quickstart passes
         # one — so `JsonlAuditSink("audit.jsonl")` doesn't crash on the first
@@ -156,6 +169,9 @@ class JsonlAuditSink:
         self._path = Path(path)
         self._lock = threading.Lock()
         self._on_event = on_event
+        # Mask PII in tool arguments / reason / context before the event is
+        # hashed and shipped (tamper-evidence stays intact).
+        self._redact_pii = redact_pii
         # (agent_id, session_id) -> (last_seq, last_hash)
         self._chains: dict[tuple[str, str], tuple[int, str]] = self._scan_chains()
         # seq of the most recent record() on any chain (for observability).
@@ -198,6 +214,7 @@ class JsonlAuditSink:
                 prev_hash=prev_hash,
                 policy_input=policy_input,
                 decision=decision,
+                redact_pii=self._redact_pii,
             )
             self._append(event)
             self._chains[key] = (next_seq, event.hash)
