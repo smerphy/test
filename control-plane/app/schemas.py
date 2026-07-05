@@ -854,3 +854,25 @@ class AccessLogOut(BaseModel):
     source_ip: str | None
     detail: dict[str, Any]
     created_at: datetime
+
+
+class AuditAnchorOut(BaseModel):
+    model_config = _BASE
+    id: str
+    chain_count: int
+    event_count: int
+    root: str
+    prev_anchor_hash: str
+    anchor_hash: str
+    published_to: str | None
+    created_at: datetime
+
+
+class AuditVerifyOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    anchored: bool
+    tampered: bool
+    anchor_hash: str | None = None
+    anchored_at: str | None = None
+    chains_checked: int = 0
+    mismatches: list[dict[str, Any]] = Field(default_factory=list)

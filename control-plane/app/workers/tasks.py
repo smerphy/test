@@ -126,6 +126,21 @@ def run_detections_task() -> dict[str, int]:
     }
 
 
+@celery_app.task(name="praetor.audit.anchor_all")
+def anchor_audit_task() -> dict[str, int]:
+    """Anchor every org's audit chain heads. Schedule via Celery beat."""
+    from app.services.anchoring import create_anchor
+
+    anchored = 0
+    with SessionLocal() as session:
+        orgs = list(session.execute(select(Organization)).scalars())
+        for org in orgs:
+            create_anchor(session, org)
+            anchored += 1
+        session.commit()
+    return {"orgs_anchored": anchored}
+
+
 @celery_app.task(name="praetor.ai.sweep_findings")
 def ai_sweep_findings_task() -> dict[str, int]:
     """Proactively surface AI findings across every AI-enabled org.
@@ -262,6 +277,7 @@ def evaluate_all_alerts_task() -> dict[str, int]:
 
 __all__ = [
     "ai_sweep_findings_task",
+    "anchor_audit_task",
     "apply_retention_task",
     "evaluate_all_alerts_task",
     "expire_stale_approvals_task",

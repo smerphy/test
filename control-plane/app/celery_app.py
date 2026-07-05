@@ -53,6 +53,10 @@ celery_app.conf.beat_schedule = {
         "task": "praetor.ai.sweep_findings",
         "schedule": 3600.0,  # hourly proactive hunt (AI-enabled orgs only)
     },
+    "anchor-audit": {
+        "task": "praetor.audit.anchor_all",
+        "schedule": 3600.0,  # hourly immutable anchor of the audit chain heads
+    },
 }
 
 
