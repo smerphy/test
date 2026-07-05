@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import Boolean, Float, ForeignKey, String
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -108,6 +108,16 @@ class User(IdMixin, TimestampMixin, Base):
     # promoted to ``owner`` at creation time.
     role: Mapped[str] = mapped_column(
         String(16), nullable=False, default=Role.ADMIN.value, server_default="admin"
+    )
+    # Provisioning + session management. `active=False` (SCIM deprovision)
+    # denies the user; `session_epoch` is stamped into the session cookie and
+    # bumped to revoke all existing sessions. `external_id` is the IdP's SCIM id.
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    session_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
 
     organization: Mapped[Organization] = relationship(back_populates="users")

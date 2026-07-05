@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # least privilege by default.
     api_key_default_role: str = Field(default="admin")
 
+    # SCIM 2.0 provisioning: bearer token → org slug. An IdP (Okta/Azure AD)
+    # calls /scim/v2/Users with `Authorization: Bearer <token>`. Set via
+    # `PRAETOR_SCIM_TOKENS='{"tok": "acme"}'`. Unset = SCIM disabled (401).
+    scim_tokens: dict[str, str] = Field(default_factory=dict)
+
     structured_logs: bool = Field(default=True)
 
     # --- Secrets at rest -------------------------------------------------

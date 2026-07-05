@@ -129,6 +129,7 @@ async def callback(
 
     user = _upsert_user(session, email=email, name=profile.get("name"))
     request.session["user_id"] = user.id
+    request.session["epoch"] = user.session_epoch
     # Escape the provider-supplied email before reflecting it into HTML.
     return HTMLResponse(
         f'<p>Signed in as {html.escape(email)}. <a href="/">Continue</a>.</p>'
@@ -139,6 +140,22 @@ async def callback(
 def logout(request: Request) -> dict[str, str]:
     request.session.clear()
     return {"status": "logged_out"}
+
+
+@router.post("/logout-all")
+def logout_all(
+    request: Request, session: Session = Depends(get_session)
+) -> dict[str, str]:
+    """Revoke every session for the signed-in user (bump their epoch), then
+    clear this one. Cookies issued before now stop working."""
+    from app.auth import current_user
+
+    user = current_user(request, session)
+    if user is not None:
+        user.session_epoch += 1
+        session.flush()
+    request.session.clear()
+    return {"status": "all_sessions_revoked"}
 
 
 def _upsert_user(session: Session, *, email: str, name: str | None) -> User:

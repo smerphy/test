@@ -70,6 +70,7 @@ class UserOut(BaseModel):
     email: str
     name: str | None = None
     role: Role
+    active: bool = True
     organization_id: str
     created_at: datetime
 

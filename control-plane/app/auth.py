@@ -45,11 +45,21 @@ def current_user(
     request: Request,
     session: Session = Depends(get_session),
 ) -> User | None:
-    """Return the signed-in User from the session, if any."""
+    """Return the signed-in User from the session, if any.
+
+    A deprovisioned (``active=False``) user is denied, and a session whose
+    stamped epoch no longer matches the user's ``session_epoch`` is treated as
+    revoked — this is how SCIM deprovision and "log out everywhere" take effect.
+    """
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    return session.get(User, user_id)
+    user = session.get(User, user_id)
+    if user is None or not user.active:
+        return None
+    if request.session.get("epoch", 0) != user.session_epoch:
+        return None
+    return user
 
 
 @dataclass(frozen=True)

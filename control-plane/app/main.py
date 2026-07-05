@@ -25,6 +25,7 @@ from app.routers import (
     privacy,
     quarantine,
     reports,
+    scim,
     telemetry,
     threat_intel,
     users,
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(privacy.router)
     app.include_router(access_log.router)
     app.include_router(connectors.router)
+    app.include_router(scim.router)
     app.include_router(ai.router)
     app.include_router(users.router)
     app.include_router(auth_router.router)

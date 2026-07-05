@@ -129,3 +129,25 @@ def update_user(
         user.role = new_role.value
     session.flush()
     return user
+
+
+@router.post("/users/{user_id}/revoke-sessions", response_model=UserOut)
+def revoke_sessions(
+    user_id: str,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+) -> User:
+    """Invalidate all of a member's active sessions (bump the session epoch).
+    Their next request on an existing cookie is rejected."""
+    user = get_owned(
+        session,
+        User,
+        user_id,
+        org,
+        owner=lambda u: u.organization_id,
+        detail="user not found",
+    )
+    user.session_epoch += 1
+    session.flush()
+    return user
