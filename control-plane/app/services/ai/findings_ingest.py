@@ -36,6 +36,7 @@ from app.services.ai.agents import (
 )
 from app.services.ai.config import build_pattern_summary
 from app.services.ai.providers import LLMProvider
+from app.services.pii import redact_text, redact_value
 from app.services.quarantine import auto_quarantine_for_finding
 
 _WS = re.compile(r"\s+")
@@ -138,6 +139,15 @@ def report_observation(
 ) -> Finding:
     """Score (via AI if available, else a conservative fallback) and store an
     agent-reported observation."""
+    # Mask PII up front so it is neither stored nor shown to the AI panel.
+    pii_types: set[str] = set()
+    if org.pii_redaction_enabled:
+        observation, found_o = redact_text(observation)
+        context, found_c = redact_text(context)
+        evidence, found_e = (
+            redact_value(evidence) if evidence else (evidence, set())
+        )
+        pii_types = found_o | found_c | found_e
     if provider is not None:
         score = triage_finding(
             provider,
@@ -149,6 +159,8 @@ def report_observation(
         from app.services.ai.agents import _fallback_score
 
         score = _fallback_score(observation, suggested_severity)
+    if pii_types:
+        evidence = {**(evidence or {}), "pii_redacted": sorted(pii_types)}
     finding, _ = store_scored_finding(
         session,
         org,

@@ -55,6 +55,11 @@ class Organization(IdMixin, TimestampMixin, Base):
     finding_fidelity_threshold: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.4, server_default="0.4"
     )
+    # When true, PII in agent-reported observations is masked on ingest
+    # (before storage and before the AI triage panel sees it). Off by default.
+    pii_redaction_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     # --- AI-native advisory (opt-in, bring-your-own-key, vendor-neutral) ---
     # Off by default: the deterministic policy engine is fully functional

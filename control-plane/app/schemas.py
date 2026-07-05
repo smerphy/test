@@ -816,3 +816,27 @@ class RuleSuggestionOut(BaseModel):
 class SuggestionReviewIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reviewed_by: str | None = Field(default=None, max_length=255)
+
+
+# ----------------------------------------------------------------
+# Privacy / data governance
+# ----------------------------------------------------------------
+
+
+class EraseSubjectIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # The identifier to erase (email, name, user id, …).
+    subject: str = Field(..., min_length=2, max_length=512)
+    # Preview the blast radius without mutating anything.
+    dry_run: bool = False
+
+
+class EraseSubjectOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject: str
+    dry_run: bool
+    findings_scrubbed: int
+    approvals_scrubbed: int
+    occurrences: int
+    # Audit events reference the subject but are hash-chained (immutable here).
+    audit_events_referencing: int
