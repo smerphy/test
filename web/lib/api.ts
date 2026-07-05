@@ -96,7 +96,7 @@ export interface ComplianceReport {
   created_at: string;
 }
 
-type Method = "GET" | "POST";
+type Method = "GET" | "POST" | "PATCH";
 
 async function call<T>(
   path: string,
@@ -182,7 +182,87 @@ export const api = {
       method: "POST",
       body: { acknowledged_by, note },
     }),
+
+  // SIEM / EDR
+  getOverview: () => call<SecurityOverview>("/overview"),
+  listFindings: (params: Record<string, string | undefined> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    const path = qs.toString() ? `/findings?${qs.toString()}` : "/findings";
+    return call<Finding[]>(path);
+  },
+  updateFinding: (id: string, body: Partial<{ status: string; assignee: string; note: string; resolved_by: string }>) =>
+    call<Finding>(`/findings/${id}`, { method: "PATCH", body }),
+  listAgents: () => call<Agent[]>("/agents"),
+  listQuarantines: () => call<Quarantine[]>("/quarantines/active"),
+  liftQuarantine: (id: string) =>
+    call<Quarantine>(`/quarantines/${id}/lift`, { method: "POST" }),
 };
+
+export type FindingSeverity = "info" | "low" | "medium" | "high" | "critical";
+export type FindingStatus = "open" | "triaging" | "resolved" | "false_positive";
+
+export interface Finding {
+  id: string;
+  rule_id: string;
+  title: string;
+  severity: FindingSeverity;
+  category: string;
+  status: FindingStatus;
+  agent_id: string | null;
+  session_id: string | null;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  evidence: Record<string, unknown>;
+  atlas_technique: string | null;
+  owasp_llm: string | null;
+  assignee: string | null;
+  note: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  created_at: string;
+}
+
+export interface SecurityOverview {
+  findings: {
+    open_total: number;
+    critical_open: number;
+    by_severity: Record<string, number>;
+    by_category: Record<string, number>;
+  };
+  quarantines: { active: number };
+  approvals: { pending: number };
+  activity_24h: { decisions: Record<string, number>; total: number };
+}
+
+export interface Agent {
+  id: string;
+  agent_id: string;
+  name: string | null;
+  agent_version: string | null;
+  sdk_version: string | null;
+  first_seen: string;
+  last_seen: string;
+  health: string;
+}
+
+export interface Quarantine {
+  id: string;
+  agent_id: string | null;
+  session_id: string | null;
+  reason: string;
+  source: string;
+  finding_id: string | null;
+  active: boolean;
+  expires_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  lifted_at: string | null;
+  lifted_by: string | null;
+}
 
 export interface MetricBucket {
   bucket_start: string;

@@ -1,11 +1,24 @@
 import Link from "next/link";
 
 const LINKS: {
-  href: "/" | "/monitoring" | "/alerts" | "/policies" | "/audit" | "/approvals" | "/compliance";
+  href:
+    | "/"
+    | "/monitoring"
+    | "/security"
+    | "/findings"
+    | "/fleet"
+    | "/alerts"
+    | "/policies"
+    | "/audit"
+    | "/approvals"
+    | "/compliance";
   label: string;
 }[] = [
   { href: "/", label: "Dashboard" },
   { href: "/monitoring", label: "Monitoring" },
+  { href: "/security", label: "Security" },
+  { href: "/findings", label: "Findings" },
+  { href: "/fleet", label: "Fleet" },
   { href: "/alerts", label: "Alerts" },
   { href: "/policies", label: "Policies" },
   { href: "/audit", label: "Audit" },
