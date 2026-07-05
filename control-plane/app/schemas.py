@@ -696,3 +696,87 @@ class TaxiiCollectionOut(BaseModel):
     media_types: list[str] = Field(default_factory=list)
     # Ready-to-use collection objects endpoint to configure a feed with.
     objects_url: str
+
+
+# ----------------------------------------------------------------
+# AI-native advisory
+# ----------------------------------------------------------------
+
+
+class AIConfigOut(BaseModel):
+    model_config = _BASE
+    ai_enabled: bool
+    ai_mode: str
+    ai_provider: str
+    ai_model: str
+    ai_base_url: str | None = None
+    # The key itself is never returned; only whether one is stored.
+    ai_key_set: bool = False
+
+
+class AIConfigUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ai_enabled: bool | None = None
+    ai_mode: Literal["advisory", "enforce"] | None = None
+    ai_provider: Literal["anthropic", "openai_compat"] | None = None
+    ai_model: str | None = Field(default=None, max_length=128)
+    ai_base_url: str | None = Field(default=None, max_length=1024)
+    # Write-only. Provide to set the key; empty string clears it.
+    ai_api_key: str | None = Field(default=None, max_length=1024)
+
+
+class AssessIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool_name: str = Field(..., min_length=1, max_length=255)
+    tool_arguments: dict[str, Any] = Field(default_factory=dict)
+    agent_id: str | None = Field(default=None, max_length=255)
+    session_id: str | None = Field(default=None, max_length=255)
+    deterministic_decision: Literal[
+        "allow", "deny", "require_approval", "transform"
+    ] = "require_approval"
+    reason: str = Field(default="", max_length=1024)
+    matched_policy_id: str | None = Field(default=None, max_length=255)
+
+
+class AgentOpinionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: str
+    decision: str
+    confidence: float
+    rationale: str
+
+
+class AssessOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    recommended_decision: str
+    final_decision: str
+    mode: str
+    confidence: float
+    rationale: str
+    opinions: list[AgentOpinionOut] = Field(default_factory=list)
+    provider: str
+    model: str
+    error: str | None = None
+
+
+class RuleSuggestionOut(BaseModel):
+    model_config = _BASE
+    id: str
+    title: str
+    rationale: str
+    severity: str
+    category: str
+    spec: dict[str, Any]
+    atlas_technique: str | None
+    owasp_llm: str | None
+    confidence: float
+    source: str
+    status: str
+    reviewed_by: str | None
+    created_rule_id: str | None
+    created_at: datetime
+
+
+class SuggestionReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reviewed_by: str | None = Field(default=None, max_length=255)

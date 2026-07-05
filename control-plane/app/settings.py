@@ -60,6 +60,17 @@ class Settings(BaseSettings):
 
     structured_logs: bool = Field(default=True)
 
+    # --- AI-native advisory ---------------------------------------------
+    # Deployment-level guardrails for the opt-in AI service. Orgs bring their
+    # own key/model; these bound what the platform permits.
+    # Allow an org to point ai_base_url at a private/non-global address (for a
+    # self-hosted model like a local Ollama). Off by default: base URLs are
+    # egress-guarded like any other outbound target (SSRF protection).
+    ai_allow_private_endpoints: bool = Field(default=False)
+    # Cap on tokens per agent call (bounds cost + latency).
+    ai_max_tokens: int = Field(default=1024)
+    ai_request_timeout_seconds: float = Field(default=30.0)
+
     # --- Scale-out event store ------------------------------------------
     # Cold tier: append-only NDJSON archive root for full-fidelity telemetry.
     # In production point this at an object-store mount (s3fs / gcsfuse) so

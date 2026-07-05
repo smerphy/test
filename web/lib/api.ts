@@ -206,6 +206,27 @@ export const api = {
   updateMember: (id: string, body: { role?: Role; name?: string }) =>
     call<Member>(`/users/${id}`, { method: "PATCH", body }),
 
+  // AI-native advisory
+  getAIConfig: () => call<AIConfig>("/ai/config"),
+  updateAIConfig: (body: Partial<AIConfigUpdate>) =>
+    call<AIConfig>("/ai/config", { method: "PATCH", body }),
+  suggestRules: () =>
+    call<RuleSuggestion[]>("/ai/rules/suggest", { method: "POST" }),
+  listSuggestions: (status?: string) =>
+    call<RuleSuggestion[]>(
+      status ? `/ai/rules/suggestions?status=${status}` : "/ai/rules/suggestions"
+    ),
+  acceptSuggestion: (id: string, reviewed_by?: string) =>
+    call<RuleSuggestion>(`/ai/rules/suggestions/${id}/accept`, {
+      method: "POST",
+      body: { reviewed_by },
+    }),
+  rejectSuggestion: (id: string, reviewed_by?: string) =>
+    call<RuleSuggestion>(`/ai/rules/suggestions/${id}/reject`, {
+      method: "POST",
+      body: { reviewed_by },
+    }),
+
   // Event store / telemetry
   getTelemetryStats: () => call<TelemetryStats>("/telemetry/stats"),
 
@@ -238,6 +259,41 @@ export const api = {
     description?: string;
   }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
 };
+
+export interface AIConfig {
+  ai_enabled: boolean;
+  ai_mode: string;
+  ai_provider: string;
+  ai_model: string;
+  ai_base_url: string | null;
+  ai_key_set: boolean;
+}
+
+export interface AIConfigUpdate {
+  ai_enabled: boolean;
+  ai_mode: string;
+  ai_provider: string;
+  ai_model: string;
+  ai_base_url: string;
+  ai_api_key: string;
+}
+
+export interface RuleSuggestion {
+  id: string;
+  title: string;
+  rationale: string;
+  severity: FindingSeverity;
+  category: string;
+  spec: Record<string, unknown>;
+  atlas_technique: string | null;
+  owasp_llm: string | null;
+  confidence: number;
+  source: string;
+  status: string;
+  reviewed_by: string | null;
+  created_rule_id: string | null;
+  created_at: string;
+}
 
 export interface TelemetryStats {
   hot_audit_events: number;

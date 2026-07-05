@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app import __version__
 from app.db import init_schema
 from app.routers import (
+    ai,
     alerts,
     approvals,
     audit,
@@ -89,6 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(detection_rules.router)
     app.include_router(threat_intel.router)
     app.include_router(telemetry.router)
+    app.include_router(ai.router)
     app.include_router(users.router)
     app.include_router(auth_router.router)
 

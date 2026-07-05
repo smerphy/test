@@ -50,6 +50,32 @@ class Organization(IdMixin, TimestampMixin, Base):
         String(16), nullable=False, default="high", server_default="high"
     )
 
+    # --- AI-native advisory (opt-in, bring-your-own-key, vendor-neutral) ---
+    # Off by default: the deterministic policy engine is fully functional
+    # without any AI. When enabled, a multi-agent panel advises on ambiguous
+    # decisions and proposes rule improvements.
+    ai_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    # advisory = recommendations only (engine decision unchanged);
+    # enforce = the AI may make a decision *more* restrictive (never looser).
+    ai_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="advisory", server_default="advisory"
+    )
+    # Vendor-neutral provider selector + model. "anthropic" (Messages API) or
+    # "openai_compat" (OpenAI Chat Completions — covers OpenAI, Azure, Groq,
+    # Together, Mistral, Ollama, vLLM, LM Studio, …).
+    ai_provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="", server_default=""
+    )
+    ai_model: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="", server_default=""
+    )
+    # Optional base-URL override (self-hosted gateway / non-default vendor).
+    ai_base_url: Mapped[str | None] = mapped_column(String(1024))
+    # BYO API key. Secret: never serialized back out (responses mask it).
+    ai_api_key: Mapped[str | None] = mapped_column(String(1024))
+
     users: Mapped[list[User]] = relationship(back_populates="organization")
     projects: Mapped[list[Project]] = relationship(back_populates="organization")  # type: ignore[name-defined]  # noqa: F821
 
