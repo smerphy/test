@@ -25,6 +25,7 @@ from app.models import (
     AlertSeverity,
     AlertState,
     ApprovalStatus,
+    ConnectorType,
     FeedFormat,
     FindingCategory,
     FindingSeverity,
@@ -876,3 +877,42 @@ class AuditVerifyOut(BaseModel):
     anchored_at: str | None = None
     chains_checked: int = 0
     mismatches: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# ----------------------------------------------------------------
+# Notification connectors
+# ----------------------------------------------------------------
+
+
+class ConnectorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(..., min_length=1, max_length=128)
+    type: ConnectorType
+    config: dict[str, Any] = Field(default_factory=dict)
+    # Write-only credential (routing key / API token / webhook URL).
+    secret: str | None = Field(default=None, max_length=2048)
+    min_severity: FindingSeverity = FindingSeverity.HIGH
+    enabled: bool = True
+
+
+class ConnectorUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    config: dict[str, Any] | None = None
+    secret: str | None = Field(default=None, max_length=2048)
+    min_severity: FindingSeverity | None = None
+    enabled: bool | None = None
+
+
+class ConnectorOut(BaseModel):
+    model_config = _BASE
+    id: str
+    name: str
+    type: str
+    config: dict[str, Any]
+    min_severity: str
+    enabled: bool
+    secret_set: bool = False
+    last_status: str | None = None
+    last_error: str | None = None
+    created_at: datetime

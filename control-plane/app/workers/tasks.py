@@ -103,26 +103,32 @@ def expire_stale_approvals_task() -> int:
 @celery_app.task(name="praetor.detections.run_all")
 def run_detections_task() -> dict[str, int]:
     """Run the detection engine across every org. Schedule via Celery beat."""
-    created = updated = quarantined = forwarded = 0
+    from app.models import Finding
+    from app.services.notify_connectors import dispatch_finding
+
+    created = updated = quarantined = forwarded = notified = 0
     with SessionLocal() as session:
-        org_ids = list(
-            session.execute(select(Organization.id)).scalars()
-        )
-        for org_id in org_ids:
-            result = run_detections(session, org_id=org_id)
+        orgs = list(session.execute(select(Organization)).scalars())
+        for org in orgs:
+            result = run_detections(session, org_id=org.id)
             created += result["created"]
             updated += result["updated"]
             quarantined += result.get("quarantined", 0)
-            # Forward each new finding to the org's SIEM/webhook (best-effort).
             for finding_id in result.get("new_finding_ids", []):
+                # Forward to the org's SIEM/webhook + typed connectors (both
+                # best-effort).
                 if forward_finding(session, finding_id):
                     forwarded += 1
+                finding = session.get(Finding, finding_id)
+                if finding is not None:
+                    notified += dispatch_finding(session, finding, org)
         session.commit()
     return {
         "created": created,
         "updated": updated,
         "quarantined": quarantined,
         "forwarded": forwarded,
+        "notified": notified,
     }
 
 

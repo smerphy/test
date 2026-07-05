@@ -14,6 +14,7 @@ from app.models.alert import (
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.audit import AuditEvent
 from app.models.audit_anchor import AuditAnchor
+from app.models.connector import ConnectorType, NotificationConnector
 from app.models.detection_rule import DetectionRule
 from app.models.finding import (
     OPEN_FINDING_STATUSES,
@@ -69,6 +70,7 @@ __all__ = [
     "AuditDailyRollup",
     "AuditEvent",
     "ComplianceReport",
+    "ConnectorType",
     "DetectionRule",
     "FeedFormat",
     "FeedSyncStatus",
@@ -80,6 +82,7 @@ __all__ = [
     "FindingStatus",
     "IndicatorType",
     "MetricEvent",
+    "NotificationConnector",
     "Organization",
     "PolicyBundle",
     "PolicyRollout",
