@@ -16,8 +16,11 @@ from app.models.finding import (
     OPEN_FINDING_STATUSES,
     Finding,
     FindingCategory,
+    FindingImpact,
     FindingSeverity,
+    FindingSource,
     FindingStatus,
+    risk_score,
 )
 from app.models.metric import MetricEvent
 from app.models.org import Organization, Role, User
@@ -65,7 +68,9 @@ __all__ = [
     "FeedSyncStatus",
     "Finding",
     "FindingCategory",
+    "FindingImpact",
     "FindingSeverity",
+    "FindingSource",
     "FindingStatus",
     "IndicatorType",
     "MetricEvent",
@@ -84,4 +89,5 @@ __all__ = [
     "ThreatFeed",
     "ThreatIndicator",
     "User",
+    "risk_score",
 ]

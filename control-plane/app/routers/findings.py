@@ -7,9 +7,9 @@ these endpoints are the analyst surface — the SIEM/EDR console's backend.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,12 +20,18 @@ from app.models import (
     Finding,
     FindingCategory,
     FindingSeverity,
+    FindingSource,
     FindingStatus,
     Organization,
     Role,
+    risk_score,
 )
-from app.schemas import FindingOut, FindingUpdateIn
+from app.schemas import FindingOut, FindingReportIn, FindingUpdateIn
+from app.services.ai.config import ai_available, org_llm_config
+from app.services.ai.findings_ingest import report_observation, run_ai_sweep
+from app.services.ai.providers import LLMError, get_provider
 from app.services.detections import run_detections
+from app.settings import Settings, get_settings
 
 router = APIRouter(tags=["findings"])
 
@@ -39,26 +45,106 @@ def list_findings(
     status_filter: Annotated[FindingStatus | None, Query(alias="status")] = None,
     severity: FindingSeverity | None = None,
     category: FindingCategory | None = None,
+    source: FindingSource | None = None,
     agent_id: str | None = None,
+    sort: Literal["last_seen", "risk"] = "last_seen",
+    include_low_fidelity: bool = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[Finding]:
-    stmt = (
-        select(Finding)
-        .where(Finding.organization_id == org.id)
-        .order_by(Finding.last_seen.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+    stmt = select(Finding).where(Finding.organization_id == org.id)
     if status_filter:
         stmt = stmt.where(Finding.status == status_filter)
     if severity:
         stmt = stmt.where(Finding.severity == severity)
     if category:
         stmt = stmt.where(Finding.category == category)
+    if source:
+        stmt = stmt.where(Finding.source == source.value)
     if agent_id:
         stmt = stmt.where(Finding.agent_id == agent_id)
+    # Hide speculative (low-fidelity) findings by default; kept, not dropped.
+    if not include_low_fidelity:
+        stmt = stmt.where(Finding.fidelity >= org.finding_fidelity_threshold)
+
+    if sort == "risk":
+        # risk_score is derived (severity x impact x fidelity), so rank in
+        # Python over a bounded window, then page.
+        rows = list(
+            session.execute(
+                stmt.order_by(Finding.last_seen.desc()).limit(500)
+            ).scalars()
+        )
+        rows.sort(
+            key=lambda f: risk_score(f.severity, f.impact, f.fidelity),
+            reverse=True,
+        )
+        return rows[offset : offset + limit]
+
+    stmt = stmt.order_by(Finding.last_seen.desc()).limit(limit).offset(offset)
     return list(session.execute(stmt).scalars().all())
+
+
+@router.post("/findings/report", response_model=FindingOut, status_code=201)
+def report_finding(
+    body: FindingReportIn,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
+) -> Finding:
+    """Ingest a security observation an agent/AI found — even incidentally.
+
+    Scored by the AI triage panel (severity/impact/fidelity) when the org has
+    opted in; otherwise stored with the suggested severity and flagged
+    unscored. Deduplicated into the findings dashboard."""
+    provider = None
+    if ai_available(org):
+        config = org_llm_config(org, settings)
+        if config is not None:
+            try:
+                provider = get_provider(config)
+            except LLMError:
+                provider = None  # fall back to unscored storage
+    return report_observation(
+        session,
+        org,
+        provider,
+        observation=body.observation,
+        agent_id=body.agent_id,
+        session_id=body.session_id,
+        suggested_severity=(
+            body.suggested_severity.value if body.suggested_severity else None
+        ),
+        context=body.context,
+        evidence=body.evidence or None,
+    )
+
+
+@router.post("/findings/sweep", response_model=dict[str, int])
+def sweep_findings(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
+) -> dict[str, int]:
+    """Proactively hunt findings the rules missed, over recent activity.
+
+    Requires the AI service to be enabled (BYOK)."""
+    if not ai_available(org):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="AI advisory is not enabled; configure it via PATCH /ai/config",
+        )
+    config = org_llm_config(org, settings)
+    assert config is not None
+    try:
+        provider = get_provider(config)
+    except LLMError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, detail=str(exc)
+        ) from exc
+    return run_ai_sweep(session, org, provider)
 
 
 @router.get("/findings/{finding_id}", response_model=FindingOut)

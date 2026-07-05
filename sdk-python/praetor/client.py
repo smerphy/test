@@ -112,8 +112,10 @@ class PraetorClient:
         self._heartbeat_url: str | None = None
         self._heartbeat_headers: dict[str, str] = {}
         self._heartbeat_client: httpx.Client | None = None
+        self._control_plane_base: str | None = None
         if control_plane_url is not None:
-            self._heartbeat_url = control_plane_url.rstrip("/") + "/agents/heartbeat"
+            self._control_plane_base = control_plane_url.rstrip("/")
+            self._heartbeat_url = self._control_plane_base + "/agents/heartbeat"
             self._heartbeat_headers = praetor_headers(api_key, org_slug)
             self._heartbeat_client = httpx.Client(timeout=10.0)
             if default_agent_id is not None:
@@ -143,6 +145,43 @@ class PraetorClient:
                     "agent_version": agent_version,
                     "sdk_version": _ENGINE_VERSION,
                 },
+            )
+
+    def report_finding(
+        self,
+        observation: str,
+        *,
+        category: str | None = None,
+        suggested_severity: str | None = None,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        evidence: dict | None = None,
+    ) -> None:
+        """Report a security observation the agent found — even incidentally.
+
+        The control plane's AI triage panel scores it by severity/impact/
+        fidelity and files it in the findings dashboard. Best-effort — never
+        raises; a no-op without a control-plane URL.
+        """
+        if self._control_plane_base is None or self._heartbeat_client is None:
+            return
+        body: dict = {"observation": observation}
+        resolved = agent_id or self._default_agent_id
+        if resolved:
+            body["agent_id"] = resolved
+        if session_id:
+            body["session_id"] = session_id
+        if category:
+            body["category"] = category
+        if suggested_severity:
+            body["suggested_severity"] = suggested_severity
+        if evidence:
+            body["evidence"] = evidence
+        with contextlib.suppress(Exception):
+            self._heartbeat_client.post(
+                self._control_plane_base + "/findings/report",
+                headers=self._heartbeat_headers,
+                json=body,
             )
 
     @property

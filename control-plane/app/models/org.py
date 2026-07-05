@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -48,6 +48,12 @@ class Organization(IdMixin, TimestampMixin, Base):
     finding_webhook_url: Mapped[str | None] = mapped_column(String(1024))
     finding_min_severity: Mapped[str] = mapped_column(
         String(16), nullable=False, default="high", server_default="high"
+    )
+    # Findings scored below this AI fidelity (0-1) are hidden from the default
+    # dashboard view (kept, not dropped) to keep speculative signal out of the
+    # way. 0 = show everything.
+    finding_fidelity_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.4, server_default="0.4"
     )
 
     # --- AI-native advisory (opt-in, bring-your-own-key, vendor-neutral) ---

@@ -126,6 +126,38 @@ def run_detections_task() -> dict[str, int]:
     }
 
 
+@celery_app.task(name="praetor.ai.sweep_findings")
+def ai_sweep_findings_task() -> dict[str, int]:
+    """Proactively surface AI findings across every AI-enabled org.
+
+    Schedule via Celery beat. No-op for orgs that have not opted in / lack a
+    key. Each org's sweep is best-effort so one failure can't stop the sweep.
+    """
+    from app.services.ai.config import ai_available, org_llm_config
+    from app.services.ai.findings_ingest import run_ai_sweep
+    from app.services.ai.providers import LLMError, get_provider
+
+    settings = get_settings()
+    orgs_swept = created = 0
+    with SessionLocal() as session:
+        orgs = list(session.execute(select(Organization)).scalars())
+        for org in orgs:
+            if not ai_available(org):
+                continue
+            config = org_llm_config(org, settings)
+            if config is None:
+                continue
+            try:
+                provider = get_provider(config)
+                result = run_ai_sweep(session, org, provider)
+            except LLMError:
+                continue
+            orgs_swept += 1
+            created += result.get("created", 0)
+            session.commit()
+    return {"orgs_swept": orgs_swept, "created": created}
+
+
 @celery_app.task(name="praetor.telemetry.apply_retention")
 def apply_retention_task() -> dict[str, int]:
     """Roll up + prune aged raw audit events across every org.
@@ -228,6 +260,7 @@ def evaluate_all_alerts_task() -> dict[str, int]:
 
 
 __all__ = [
+    "ai_sweep_findings_task",
     "apply_retention_task",
     "evaluate_all_alerts_task",
     "expire_stale_approvals_task",

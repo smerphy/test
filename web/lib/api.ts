@@ -195,6 +195,8 @@ export const api = {
   },
   updateFinding: (id: string, body: Partial<{ status: string; assignee: string; note: string; resolved_by: string }>) =>
     call<Finding>(`/findings/${id}`, { method: "PATCH", body }),
+  sweepFindings: () =>
+    call<Record<string, number>>("/findings/sweep", { method: "POST" }),
   listAgents: () => call<Agent[]>("/agents"),
   listQuarantines: () => call<Quarantine[]>("/quarantines/active"),
   liftQuarantine: (id: string) =>
@@ -398,6 +400,10 @@ export interface Finding {
   severity: FindingSeverity;
   category: string;
   status: FindingStatus;
+  source: string;
+  impact: string;
+  fidelity: number;
+  risk_score: number;
   agent_id: string | null;
   session_id: string | null;
   count: number;

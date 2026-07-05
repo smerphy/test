@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -58,9 +59,54 @@ class FindingStatus(StrEnum):
     FALSE_POSITIVE = "false_positive"
 
 
+class FindingImpact(StrEnum):
+    """Estimated blast radius / business impact if the finding is real."""
+
+    NEGLIGIBLE = "negligible"
+    MINOR = "minor"
+    MODERATE = "moderate"
+    MAJOR = "major"
+    SEVERE = "severe"
+
+
+class FindingSource(StrEnum):
+    """Where a finding came from."""
+
+    DETECTION_ENGINE = "detection_engine"
+    AGENT_REPORT = "agent_report"  # an agent flagged it opportunistically
+    AI_SWEEP = "ai_sweep"  # Praetor's AI surfaced it unprompted
+
+
 # Statuses in which a finding is still "live" and should be updated in place
 # by a re-firing detection rather than duplicated.
 OPEN_FINDING_STATUSES = (FindingStatus.OPEN, FindingStatus.TRIAGING)
+
+_SEVERITY_WEIGHT: dict[str, float] = {
+    "info": 0.1,
+    "low": 0.3,
+    "medium": 0.5,
+    "high": 0.75,
+    "critical": 1.0,
+}
+_IMPACT_WEIGHT: dict[str, float] = {
+    "negligible": 0.1,
+    "minor": 0.3,
+    "moderate": 0.5,
+    "major": 0.75,
+    "severe": 1.0,
+}
+
+
+def risk_score(severity: str, impact: str | None, fidelity: float) -> float:
+    """Composite 0-100 priority: severity x impact x fidelity.
+
+    Fidelity (how likely the finding is real) discounts the raw severity/impact
+    so confident, high-blast-radius findings rank above speculative ones.
+    """
+    sev = _SEVERITY_WEIGHT.get(severity, 0.3)
+    imp = _IMPACT_WEIGHT.get(impact, 0.5) if impact else 0.5
+    fid = max(0.0, min(1.0, fidelity))
+    return round(sev * imp * fid * 100, 1)
 
 
 class Finding(IdMixin, TimestampMixin, Base):
@@ -101,6 +147,22 @@ class Finding(IdMixin, TimestampMixin, Base):
         JSON, nullable=False, default=dict
     )
 
+    # Where this finding originated.
+    source: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=FindingSource.DETECTION_ENGINE.value,
+        server_default="detection_engine",
+    )
+    # Estimated blast radius, and AI confidence (0-1) that it is a real,
+    # actionable finding. Deterministic detections default to full fidelity.
+    impact: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="moderate", server_default="moderate"
+    )
+    fidelity: Mapped[float] = mapped_column(
+        Float, nullable=False, default=1.0, server_default="1"
+    )
+
     # Threat-framework mapping.
     atlas_technique: Mapped[str | None] = mapped_column(String(64))
     owasp_llm: Mapped[str | None] = mapped_column(String(32))
@@ -115,6 +177,7 @@ class Finding(IdMixin, TimestampMixin, Base):
         Index("ix_finding_org_status", "organization_id", "status"),
         Index("ix_finding_org_severity", "organization_id", "severity"),
         Index("ix_finding_org_dedup", "organization_id", "dedup_key"),
+        Index("ix_finding_org_source", "organization_id", "source"),
     )
 
 
@@ -122,6 +185,9 @@ __all__ = [
     "OPEN_FINDING_STATUSES",
     "Finding",
     "FindingCategory",
+    "FindingImpact",
     "FindingSeverity",
+    "FindingSource",
     "FindingStatus",
+    "risk_score",
 ]

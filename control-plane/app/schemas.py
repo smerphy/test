@@ -11,6 +11,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_serializer,
     model_validator,
 )
@@ -34,6 +35,7 @@ from app.models import (
     Role,
     RolloutState,
 )
+from app.models.finding import risk_score as _risk_score
 
 _BASE = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -274,6 +276,9 @@ class FindingOut(BaseModel):
     severity: FindingSeverity
     category: FindingCategory
     status: FindingStatus
+    source: str
+    impact: str
+    fidelity: float
     agent_id: str | None
     session_id: str | None
     count: int
@@ -287,6 +292,24 @@ class FindingOut(BaseModel):
     resolved_at: datetime | None
     resolved_by: str | None
     created_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def risk_score(self) -> float:
+        """Composite priority = severity x impact x fidelity (0-100)."""
+        return _risk_score(self.severity, self.impact, self.fidelity)
+
+
+class FindingReportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Free-form security observation (untrusted text; scored, never executed).
+    observation: str = Field(..., min_length=1, max_length=8000)
+    agent_id: str | None = Field(default=None, max_length=255)
+    session_id: str | None = Field(default=None, max_length=255)
+    category: FindingCategory | None = None
+    suggested_severity: FindingSeverity | None = None
+    context: str = Field(default="", max_length=4000)
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class FindingUpdateIn(BaseModel):
