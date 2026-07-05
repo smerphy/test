@@ -260,6 +260,31 @@ class FindingUpdateIn(BaseModel):
 
 
 # ----------------------------------------------------------------
+# Fleet / sensor management
+# ----------------------------------------------------------------
+
+
+class HeartbeatIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(..., min_length=1, max_length=255)
+    name: str | None = Field(default=None, max_length=255)
+    agent_version: str | None = Field(default=None, max_length=64)
+    sdk_version: str | None = Field(default=None, max_length=64)
+
+
+class AgentOut(BaseModel):
+    model_config = _BASE
+    id: str
+    agent_id: str
+    name: str | None
+    agent_version: str | None
+    sdk_version: str | None
+    first_seen: datetime
+    last_seen: datetime
+    health: str
+
+
+# ----------------------------------------------------------------
 # Quarantines (EDR response)
 # ----------------------------------------------------------------
 

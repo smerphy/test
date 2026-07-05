@@ -1,3 +1,4 @@
+from app.models.agent import Agent
 from app.models.alert import (
     AlertAggregation,
     AlertChannel,
@@ -31,6 +32,7 @@ from app.models.report import ComplianceReport, ReportStatus
 
 __all__ = [
     "OPEN_FINDING_STATUSES",
+    "Agent",
     "AlertAggregation",
     "AlertChannel",
     "AlertComparison",

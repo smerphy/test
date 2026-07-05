@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import httpx
+from praetor_engine import __version__ as _ENGINE_VERSION
 from praetor_engine.evaluator import Evaluator, Policy
 from praetor_engine.parser import parse_bundle_file
 from praetor_engine.types import (
@@ -21,7 +24,7 @@ from praetor.approval import ApprovalHandler, ControlPlaneApprovalHandler
 from praetor.audit import AuditSink, JsonlAuditSink, NullAuditSink, RemoteShipper
 from praetor.errors import PolicyDenied
 from praetor.quarantine import QuarantineGuard
-from praetor.transport import HttpTransport
+from praetor.transport import HttpTransport, praetor_headers
 
 
 class PraetorClient:
@@ -104,6 +107,43 @@ class PraetorClient:
             offset = self._audit.path.with_suffix(self._audit.path.suffix + ".offset")
             self._shipper = RemoteShipper(self._audit, transport, offset_path=offset)
             self._shipper.start()
+
+        # Fleet enrollment: register this sensor with the control plane.
+        self._heartbeat_url: str | None = None
+        self._heartbeat_headers: dict[str, str] = {}
+        self._heartbeat_client: httpx.Client | None = None
+        if control_plane_url is not None:
+            self._heartbeat_url = control_plane_url.rstrip("/") + "/agents/heartbeat"
+            self._heartbeat_headers = praetor_headers(api_key, org_slug)
+            self._heartbeat_client = httpx.Client(timeout=10.0)
+            if default_agent_id is not None:
+                self.heartbeat()  # enroll on start (best-effort)
+
+    def heartbeat(
+        self,
+        agent_id: str | None = None,
+        *,
+        name: str | None = None,
+        agent_version: str | None = None,
+    ) -> None:
+        """Report this sensor to the control plane (enroll / refresh last-seen).
+        Best-effort — never raises."""
+        if self._heartbeat_url is None or self._heartbeat_client is None:
+            return
+        resolved = agent_id or self._default_agent_id
+        if not resolved:
+            return
+        with contextlib.suppress(Exception):
+            self._heartbeat_client.post(
+                self._heartbeat_url,
+                headers=self._heartbeat_headers,
+                json={
+                    "agent_id": resolved,
+                    "name": name,
+                    "agent_version": agent_version,
+                    "sdk_version": _ENGINE_VERSION,
+                },
+            )
 
     @property
     def shipper(self) -> RemoteShipper | None:
