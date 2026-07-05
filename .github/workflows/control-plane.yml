@@ -1,0 +1,48 @@
+name: control-plane
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: control-plane-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control-plane
+    env:
+      # The suite runs without configured API keys / a production session
+      # secret, which is only permitted in explicit dev mode.
+      PRAETOR_DEV_MODE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        working-directory: .
+        run: uv sync --package praetor-control-plane --extra dev
+
+      - name: Ruff
+        run: uv run ruff check app tests
+
+      - name: Mypy (strict)
+        run: uv run mypy app
+
+      - name: Alembic migrations apply cleanly
+        run: uv run alembic upgrade head
+
+      - name: Pytest with coverage gate (>=80%)
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
