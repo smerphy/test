@@ -31,10 +31,13 @@ def _clean_db() -> Iterator[None]:
     Base.metadata.create_all(bind=engine)
     # Drop any cached encryption cipher so tests can reconfigure keys freely.
     from app.services.crypto import reset_cipher
+    from app.services.ratelimit import reset_limiter
 
     reset_cipher()
+    reset_limiter()
     yield
     reset_cipher()
+    reset_limiter()
 
 
 @pytest.fixture

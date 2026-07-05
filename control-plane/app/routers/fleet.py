@@ -11,6 +11,7 @@ from app.deps import get_owned
 from app.models import Agent, Organization, Role
 from app.schemas import AgentOut, HeartbeatIn
 from app.services.fleet import health_of, heartbeat, list_agents
+from app.services.ratelimit import rate_limit
 
 router = APIRouter(tags=["fleet"])
 
@@ -38,6 +39,7 @@ def post_heartbeat(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
     _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ingest")),
 ) -> AgentOut:
     """Enroll a sensor (first contact) or refresh its last-seen."""
     agent = heartbeat(

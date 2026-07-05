@@ -31,6 +31,7 @@ from app.services.ai.config import ai_available, org_llm_config
 from app.services.ai.findings_ingest import report_observation, run_ai_sweep
 from app.services.ai.providers import LLMError, get_provider
 from app.services.detections import run_detections
+from app.services.ratelimit import rate_limit
 from app.settings import Settings, get_settings
 
 router = APIRouter(tags=["findings"])
@@ -92,6 +93,7 @@ def report_finding(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
     _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ingest")),
 ) -> Finding:
     """Ingest a security observation an agent/AI found — even incidentally.
 
@@ -127,6 +129,7 @@ def sweep_findings(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
     _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ai")),
 ) -> dict[str, int]:
     """Proactively hunt findings the rules missed, over recent activity.
 

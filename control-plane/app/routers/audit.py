@@ -16,6 +16,7 @@ from app.models import AuditEvent, Organization, Role
 from app.schemas import AuditEventIn, AuditEventOut, AuditIngestResult
 from app.services.audit_ingest import ingest_event
 from app.services.event_store import archive_events
+from app.services.ratelimit import rate_limit
 
 router = APIRouter(tags=["audit"])
 
@@ -30,6 +31,7 @@ def ingest_events(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
     _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ingest")),
 ) -> AuditIngestResult:
     accepted = 0
     errors: list[str] = []

@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     # print(Fernet.generate_key().decode())"
     secret_keys: list[str] = Field(default_factory=list)
 
+    # --- Rate limiting (per-tenant token buckets) -----------------------
+    rate_limit_enabled: bool = Field(default=True)
+    # Requests/minute per org, by bucket. Cheap ingest is generous; expensive
+    # AI calls are tight. Capacity = one minute's worth (burst), refilled
+    # steadily.
+    rate_limit_ingest_per_min: int = Field(default=6000)
+    rate_limit_ai_per_min: int = Field(default=60)
+    rate_limit_default_per_min: int = Field(default=1200)
+
     # --- AI-native advisory ---------------------------------------------
     # Deployment-level guardrails for the opt-in AI service. Orgs bring their
     # own key/model; these bound what the platform permits.

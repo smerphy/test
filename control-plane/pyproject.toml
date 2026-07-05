@@ -90,3 +90,4 @@ select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]
 # FastAPI dependency injection uses `Depends()` as a default value — that's the idiom.
 "app/routers/*" = ["B008"]
 "app/auth.py" = ["B008"]
+"app/services/ratelimit.py" = ["B008"]

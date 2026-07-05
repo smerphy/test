@@ -22,6 +22,7 @@ from app.schemas import (
 from app.services.event_store import archive_events
 from app.services.metrics import aggregate_metrics, ingest_metric
 from app.services.prometheus_export import render_prometheus
+from app.services.ratelimit import rate_limit
 
 router = APIRouter(tags=["metrics"])
 
@@ -36,6 +37,7 @@ def ingest_events(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
     _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ingest")),
 ) -> MetricIngestResult:
     accepted = 0
     errors: list[str] = []

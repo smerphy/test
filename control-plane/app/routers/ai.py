@@ -50,6 +50,7 @@ from app.services.ai.config import (
 from app.services.ai.providers import LLMError, get_provider
 from app.services.crypto import seal
 from app.services.egress import EgressBlocked, assert_safe_webhook_url
+from app.services.ratelimit import rate_limit
 from app.settings import Settings, get_settings
 
 router = APIRouter(tags=["ai"])
@@ -124,6 +125,7 @@ def assess(
     org: Organization = Depends(current_org),
     settings: Settings = Depends(get_settings),
     _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ai")),
 ) -> AssessOut:
     _require_ai(org)
     config = org_llm_config(org, settings)
@@ -175,6 +177,7 @@ def suggest_rules(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
     _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ai")),
 ) -> list[RuleSuggestion]:
     _require_ai(org)
     config = org_llm_config(org, settings)
