@@ -29,7 +29,12 @@ def _clean_db() -> Iterator[None]:
     engine = get_engine()
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    # Drop any cached encryption cipher so tests can reconfigure keys freely.
+    from app.services.crypto import reset_cipher
+
+    reset_cipher()
     yield
+    reset_cipher()
 
 
 @pytest.fixture

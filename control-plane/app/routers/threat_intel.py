@@ -35,6 +35,7 @@ from app.schemas import (
     ThreatIndicatorIn,
     ThreatIndicatorOut,
 )
+from app.services.crypto import seal
 from app.services.egress import EgressBlocked, assert_safe_webhook_url
 from app.services.threat_intel import (
     discover_taxii_collections,
@@ -82,7 +83,7 @@ def create_feed(
             if body.default_indicator_type
             else None
         ),
-        auth_header=body.auth_header,
+        auth_header=seal(body.auth_header),
         enabled=body.enabled,
         tlp=body.tlp.value,
         default_confidence=body.default_confidence,
@@ -138,6 +139,9 @@ def update_feed(
         _validate_feed_url(fields["url"])
     for key, value in fields.items():
         if value is None and key in {"name", "format"}:
+            continue
+        if key == "auth_header":
+            feed.auth_header = seal(value)
             continue
         # Store enum members as their string value to match the columns.
         setattr(feed, key, value.value if hasattr(value, "value") else value)

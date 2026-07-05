@@ -60,6 +60,15 @@ class Settings(BaseSettings):
 
     structured_logs: bool = Field(default=True)
 
+    # --- Secrets at rest -------------------------------------------------
+    # Fernet keys (comma-separated) for envelope-encrypting tenant secrets
+    # (BYO AI keys, feed auth headers). The first key encrypts; all keys are
+    # tried on decrypt (rotate by prepending a new one). Unset = secrets are
+    # stored as plaintext (dev only — set this in any real deployment).
+    # Generate: python -c "from cryptography.fernet import Fernet;
+    # print(Fernet.generate_key().decode())"
+    secret_keys: list[str] = Field(default_factory=list)
+
     # --- AI-native advisory ---------------------------------------------
     # Deployment-level guardrails for the opt-in AI service. Orgs bring their
     # own key/model; these bound what the platform permits.

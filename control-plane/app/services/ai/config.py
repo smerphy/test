@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.models import AuditEvent, Finding, Organization
 from app.models.finding import OPEN_FINDING_STATUSES
 from app.services.ai.providers import SUPPORTED_PROVIDERS, LLMConfig
+from app.services.crypto import unseal
 from app.settings import Settings
 
 
@@ -35,7 +36,7 @@ def org_llm_config(org: Organization, settings: Settings) -> LLMConfig | None:
     return LLMConfig(
         provider=org.ai_provider,
         model=org.ai_model,
-        api_key=org.ai_api_key or "",
+        api_key=unseal(org.ai_api_key) or "",
         base_url=org.ai_base_url,
         max_tokens=settings.ai_max_tokens,
         timeout_seconds=settings.ai_request_timeout_seconds,

@@ -48,6 +48,7 @@ from app.services.ai.config import (
     org_llm_config,
 )
 from app.services.ai.providers import LLMError, get_provider
+from app.services.crypto import seal
 from app.services.egress import EgressBlocked, assert_safe_webhook_url
 from app.settings import Settings, get_settings
 
@@ -100,8 +101,8 @@ def update_config(
         if key in fields and fields[key] is not None:
             setattr(org, key, fields[key])
     if "ai_api_key" in fields:
-        # Empty string clears the stored key; otherwise set it.
-        org.ai_api_key = fields["ai_api_key"] or None
+        # Empty string clears the stored key; otherwise encrypt it at rest.
+        org.ai_api_key = seal(fields["ai_api_key"] or None)
     session.flush()
     return _config_out(org)
 

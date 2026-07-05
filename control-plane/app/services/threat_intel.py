@@ -38,6 +38,7 @@ from app.models import (
     ThreatFeed,
     ThreatIndicator,
 )
+from app.services.crypto import unseal
 from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
 # --- bounds -----------------------------------------------------------------
@@ -504,8 +505,9 @@ def fetch_feed_content(
     # attacker-influenced tenant config).
     assert_safe_webhook_url(feed.url)
     headers: dict[str, str] = {}
-    if feed.auth_header and ":" in feed.auth_header:
-        name, _, val = feed.auth_header.partition(":")
+    auth_header = unseal(feed.auth_header)
+    if auth_header and ":" in auth_header:
+        name, _, val = auth_header.partition(":")
         headers[name.strip()] = val.strip()
     client = http_client or httpx.Client(timeout=FETCH_TIMEOUT_SECONDS)
     resp = client.get(feed.url, headers=headers)
@@ -626,7 +628,7 @@ def _sync_taxii(
 ) -> list[IndicatorDraft]:
     objects = poll_taxii_collection(
         feed.url or "",
-        auth_header=feed.auth_header,
+        auth_header=unseal(feed.auth_header),
         added_after=feed.last_synced_at,
         http_client=http_client,
     )
