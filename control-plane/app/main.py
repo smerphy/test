@@ -13,6 +13,7 @@ from app.routers import (
     approvals,
     audit,
     findings,
+    investigate,
     metrics,
     org,
     policies,
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(org.router)
     app.include_router(findings.router)
     app.include_router(quarantine.router)
+    app.include_router(investigate.router)
     app.include_router(auth_router.router)
 
     @app.middleware("http")
