@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
 from app.models import (
@@ -22,6 +22,7 @@ from app.models import (
     FindingSeverity,
     FindingStatus,
     Organization,
+    Role,
 )
 from app.schemas import FindingOut, FindingUpdateIn
 from app.services.detections import run_detections
@@ -75,6 +76,7 @@ def update_finding(
     body: FindingUpdateIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> Finding:
     """Triage a finding: change status, assign, or annotate."""
     finding = get_owned(
@@ -102,6 +104,7 @@ def update_finding(
 def run_now(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
     window_minutes: Annotated[int, Query(ge=1, le=1440)] = 60,
 ) -> dict[str, Any]:
     """Run the detection engine for this org immediately (returns created/updated)."""

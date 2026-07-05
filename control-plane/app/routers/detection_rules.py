@@ -7,10 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
-from app.models import DetectionRule, Organization
+from app.models import DetectionRule, Organization, Role
 from app.schemas import DetectionRuleIn, DetectionRuleOut
 
 router = APIRouter(tags=["detection-rules"])
@@ -25,6 +25,7 @@ def create_rule(
     body: DetectionRuleIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> DetectionRule:
     rule = DetectionRule(
         organization_id=org.id,
@@ -80,6 +81,7 @@ def update_rule(
     body: DetectionRuleIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> DetectionRule:
     rule = get_owned(
         session, DetectionRule, rule_id, org, detail="detection rule not found"
@@ -103,6 +105,7 @@ def delete_rule(
     rule_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> None:
     rule = get_owned(
         session, DetectionRule, rule_id, org, detail="detection rule not found"

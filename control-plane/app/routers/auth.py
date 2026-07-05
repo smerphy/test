@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import Organization, User
+from app.models import Organization, Role, User
 from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -169,7 +169,15 @@ def _upsert_user(session: Session, *, email: str, name: str | None) -> User:
         session.add(org)
         session.flush()
 
-    user = User(email=email, name=name, organization_id=org.id)
+    # The first user to land in an org owns it; later teammates who auto-join
+    # a shared corporate tenant default to the column's `admin` role and can
+    # be adjusted by an owner via the /users API.
+    has_members = session.execute(
+        select(User.id).where(User.organization_id == org.id).limit(1)
+    ).first()
+    role = Role.ADMIN.value if has_members else Role.OWNER.value
+
+    user = User(email=email, name=name, organization_id=org.id, role=role)
     session.add(user)
     session.flush()
     return user

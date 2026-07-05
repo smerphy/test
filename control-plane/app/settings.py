@@ -46,6 +46,18 @@ class Settings(BaseSettings):
     # only usable in single-organization deployments.
     api_key_orgs: dict[str, str] = Field(default_factory=dict)
 
+    # Per-key RBAC role. Maps an API key to one of viewer/analyst/admin/owner,
+    # set via `PRAETOR_API_KEY_ROLES='{"ingest-key": "analyst"}'`. Keys not
+    # listed fall back to `api_key_default_role`. This lets you mint read-only
+    # keys (SIEM pulls, dashboards) and least-privilege sensor keys while
+    # reserving config changes for admin keys.
+    api_key_roles: dict[str, str] = Field(default_factory=dict)
+    # Role granted to a valid API key that is not named in `api_key_roles`.
+    # Defaults to `admin` so existing keys keep full API access after RBAC
+    # lands (non-breaking); tighten to `analyst` or `viewer` to opt into
+    # least privilege by default.
+    api_key_default_role: str = Field(default="admin")
+
     structured_logs: bool = Field(default=True)
 
     # Celery broker + result backend. Default to in-process eager so tests

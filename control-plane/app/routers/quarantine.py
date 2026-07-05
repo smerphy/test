@@ -14,10 +14,10 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
-from app.models import Organization, Quarantine
+from app.models import Organization, Quarantine, Role
 from app.schemas import QuarantineCheckOut, QuarantineCreateIn, QuarantineOut
 from app.services.quarantine import (
     active_quarantines,
@@ -38,6 +38,7 @@ def create(
     body: QuarantineCreateIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> Quarantine:
     return create_quarantine(
         session,
@@ -98,6 +99,7 @@ def lift(
     quarantine_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
     lifted_by: Annotated[str | None, Query()] = None,
 ) -> Quarantine:
     q = get_owned(

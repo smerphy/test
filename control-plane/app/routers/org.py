@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
-from app.models import Organization
+from app.models import Organization, Role
 from app.schemas import OrganizationOut, OrganizationUpdateIn
 from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
@@ -24,6 +24,7 @@ def update_org(
     body: OrganizationUpdateIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> Organization:
     # Only mutate fields explicitly present in the request so a partial
     # update doesn't clobber unrelated settings.

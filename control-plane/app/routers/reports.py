@@ -9,10 +9,10 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
-from app.models import ComplianceReport, Organization, ReportStatus
+from app.models import ComplianceReport, Organization, ReportStatus, Role
 from app.schemas import ComplianceReportIn, ComplianceReportOut
 from app.services.pdf import render_report_pdf
 from app.workers.tasks import generate_report_task
@@ -29,6 +29,7 @@ def request_report(
     body: ComplianceReportIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> ComplianceReport:
     if body.period_end <= body.period_start:
         raise HTTPException(

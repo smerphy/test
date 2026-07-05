@@ -14,10 +14,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
-from app.models import ApprovalRequest, ApprovalStatus, Organization
+from app.models import ApprovalRequest, ApprovalStatus, Organization, Role
 from app.schemas import ApprovalCreateIn, ApprovalRequestOut, ApprovalResolveIn
 from app.settings import Settings, get_settings
 from app.workers.tasks import notify_approval_task
@@ -131,6 +131,7 @@ def resolve_approval(
     body: ApprovalResolveIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> ApprovalRequest:
     approval = get_owned(
         session, ApprovalRequest, approval_id, org, detail="approval not found"

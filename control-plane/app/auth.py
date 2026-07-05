@@ -10,12 +10,16 @@ passed as a separate header, defaulting to the first key's owner.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import Organization, User
+from app.models import Organization, Role, User
+from app.rbac import role_at_least
 from app.settings import Settings, get_settings
 
 
@@ -48,25 +52,63 @@ def current_user(
     return session.get(User, user_id)
 
 
-def current_org(
+@dataclass(frozen=True)
+class Principal:
+    """The authenticated caller: their org and their RBAC role.
+
+    ``kind`` distinguishes a human session (``"user"``) from a machine
+    credential (``"api_key"``); ``user_id`` is set only for the former.
+    """
+
+    org: Organization
+    role: Role
+    kind: str
+    user_id: str | None = None
+
+
+def _api_key_role(api_key: str | None, settings: Settings) -> Role:
+    """RBAC role for a valid API key.
+
+    Dev mode with no configured keys grants OWNER for frictionless local
+    work. Otherwise the key's role comes from ``api_key_roles`` (falling back
+    to ``api_key_default_role``). An unrecognized configured value fails
+    closed to VIEWER rather than silently escalating.
+    """
+    if not settings.api_keys:
+        # Only reachable in dev mode (else _check_api_key already 401'd).
+        return Role.OWNER
+    raw = settings.api_key_roles.get(api_key or "", settings.api_key_default_role)
+    try:
+        return Role(raw)
+    except ValueError:
+        return Role.VIEWER
+
+
+def current_principal(
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     x_org_slug: str | None = Header(default=None, alias="X-Org-Slug"),
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
-) -> Organization:
-    """Resolve the calling Organization.
+) -> Principal:
+    """Resolve the calling principal (org + role).
 
     Two credential paths:
-      - browser: signed-in session cookie → user.organization
-      - SDK / CLI: X-API-Key header, optionally X-Org-Slug
+      - browser: signed-in session cookie → user.organization + user.role
+      - SDK / CLI: X-API-Key header, optionally X-Org-Slug → api_key role
     """
     # 1) Session cookie path (humans).
     user = current_user(request, session)
     if user is not None:
         org = session.get(Organization, user.organization_id)
         if org is not None:
-            return org
+            try:
+                role = Role(user.role)
+            except ValueError:
+                role = Role.VIEWER
+            return Principal(
+                org=org, role=role, kind="user", user_id=user.id
+            )
 
     # 2) API-key path (SDKs / CLI).
     _check_api_key(x_api_key, settings)
@@ -118,7 +160,54 @@ def current_org(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="no organization found; create one via the bootstrap script",
         )
-    return org
+    return Principal(
+        org=org, role=_api_key_role(x_api_key, settings), kind="api_key"
+    )
 
 
-__all__ = ["current_org", "current_user"]
+def current_org(
+    principal: Principal = Depends(current_principal),
+) -> Organization:
+    """The calling Organization.
+
+    Thin wrapper over :func:`current_principal` so existing routers keep
+    depending on ``current_org`` unchanged; FastAPI resolves the shared
+    ``current_principal`` dependency once per request.
+    """
+    return principal.org
+
+
+def require_role(
+    minimum: Role,
+) -> Callable[[Principal], Principal]:
+    """Dependency factory: 403 unless the caller's role is >= ``minimum``.
+
+    Use alongside ``current_org`` on mutating endpoints, e.g.::
+
+        _p: Principal = Depends(require_role(Role.ADMIN))
+    """
+
+    def dependency(
+        principal: Principal = Depends(current_principal),
+    ) -> Principal:
+        if not role_at_least(principal.role, minimum):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"this action requires the '{minimum.value}' role or higher; "
+                    f"the credential has '{principal.role.value}'"
+                ),
+            )
+        return principal
+
+    dependency.__name__ = f"require_role_{minimum.value}"
+    return dependency
+
+
+__all__ = [
+    "Principal",
+    "current_org",
+    "current_principal",
+    "current_user",
+    "require_role",
+]

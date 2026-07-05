@@ -9,10 +9,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
-from app.models import AlertChannel, AlertEvent, AlertRule, AlertState, Organization
+from app.models import (
+    AlertChannel,
+    AlertEvent,
+    AlertRule,
+    AlertState,
+    Organization,
+    Role,
+)
 from app.schemas import (
     AlertAcknowledgeIn,
     AlertEventOut,
@@ -34,6 +41,7 @@ def create_rule(
     body: AlertRuleIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> AlertRule:
     # SLACK/WEBHOOK targets are URLs the control plane POSTs to; reject
     # internal addresses up front (SSRF guard). PagerDuty target is a routing
@@ -96,6 +104,7 @@ def evaluate_now(
     rule_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> list[AlertEvent]:
     rule = get_owned(session, AlertRule, rule_id, org, detail="rule not found")
     return evaluate_rule(session, rule)
@@ -109,6 +118,7 @@ def acknowledge_event(
     body: AlertAcknowledgeIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> AlertEvent:
     event = get_owned(
         session, AlertEvent, event_id, org, detail="alert event not found"

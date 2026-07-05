@@ -5,10 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
-from app.models import Agent, Organization
+from app.models import Agent, Organization, Role
 from app.schemas import AgentOut, HeartbeatIn
 from app.services.fleet import health_of, heartbeat, list_agents
 
@@ -37,6 +37,7 @@ def post_heartbeat(
     body: HeartbeatIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> AgentOut:
     """Enroll a sensor (first contact) or refresh its last-seen."""
     agent = heartbeat(

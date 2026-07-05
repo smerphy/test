@@ -9,7 +9,7 @@ from praetor_engine.parser import PolicyParseError, parse_bundle
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
 from app.models import (
@@ -18,6 +18,7 @@ from app.models import (
     PolicyRollout,
     PolicyVersion,
     Project,
+    Role,
     RolloutState,
 )
 from app.schemas import (
@@ -54,6 +55,7 @@ def create_project(
     body: ProjectIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> Project:
     project = Project(organization_id=org.id, name=body.name, slug=body.slug)
     session.add(project)
@@ -80,6 +82,7 @@ def create_bundle(
     body: PolicyBundleIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> PolicyBundleOut:
     project = get_owned(session, Project, project_id, org, detail="project not found")
     bundle = PolicyBundle(
@@ -112,6 +115,7 @@ def create_version(
     body: PolicyVersionIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> PolicyVersion:
     bundle = get_owned(
         session,
@@ -194,6 +198,7 @@ def create_rollout(
     body: PolicyRolloutIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> PolicyRollout:
     bundle = get_owned(
         session,

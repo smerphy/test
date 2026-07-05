@@ -1,10 +1,32 @@
 from __future__ import annotations
 
+from enum import StrEnum
+
 from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models._mixins import IdMixin, TimestampMixin
+
+
+class Role(StrEnum):
+    """RBAC role, ascending in privilege.
+
+    - ``viewer``  — read-only access to every resource.
+    - ``analyst`` — SOC operations: triage findings, resolve approvals,
+      create/lift quarantines, acknowledge/evaluate alerts, ingest telemetry.
+    - ``admin``   — configuration: policies, alert rules, detection rules,
+      org settings.
+    - ``owner``   — everything, plus user/role management.
+
+    The numeric ordering lives in ``app.rbac.ROLE_LEVELS``; a higher role
+    always subsumes the privileges of the ones below it.
+    """
+
+    VIEWER = "viewer"
+    ANALYST = "analyst"
+    ADMIN = "admin"
+    OWNER = "owner"
 
 
 class Organization(IdMixin, TimestampMixin, Base):
@@ -39,6 +61,13 @@ class User(IdMixin, TimestampMixin, Base):
     name: Mapped[str | None] = mapped_column(String(255))
     organization_id: Mapped[str] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # RBAC role within the organization. Stored as the StrEnum value so it
+    # compares as a plain string. Defaults to ``admin`` to preserve access
+    # for pre-RBAC rows/deployments; the first user of a fresh org is
+    # promoted to ``owner`` at creation time.
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=Role.ADMIN.value, server_default="admin"
     )
 
     organization: Mapped[Organization] = relationship(back_populates="users")

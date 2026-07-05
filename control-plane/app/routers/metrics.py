@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
-from app.models import MetricEvent, Organization
+from app.models import MetricEvent, Organization, Role
 from app.schemas import (
     MetricAggregateResponse,
     MetricEventIn,
@@ -34,6 +34,7 @@ def ingest_events(
     events: Annotated[list[MetricEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> MetricIngestResult:
     accepted = 0
     errors: list[str] = []

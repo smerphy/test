@@ -20,7 +20,7 @@ from app.models.finding import (
     FindingStatus,
 )
 from app.models.metric import MetricEvent
-from app.models.org import Organization, User
+from app.models.org import Organization, Role, User
 from app.models.policy import (
     PolicyBundle,
     PolicyRollout,
@@ -60,6 +60,7 @@ __all__ = [
     "Quarantine",
     "QuarantineSource",
     "ReportStatus",
+    "Role",
     "RolloutState",
     "User",
 ]

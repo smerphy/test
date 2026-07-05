@@ -28,6 +28,7 @@ from app.models import (
     FindingStatus,
     QuarantineSource,
     ReportStatus,
+    Role,
     RolloutState,
 )
 
@@ -55,6 +56,22 @@ class OrganizationUpdateIn(BaseModel):
     # Forward new findings (>= finding_min_severity) to this webhook / SIEM.
     finding_webhook_url: str | None = Field(default=None, max_length=1024)
     finding_min_severity: FindingSeverity | None = None
+
+
+class UserOut(BaseModel):
+    model_config = _BASE
+    id: str
+    email: str
+    name: str | None = None
+    role: Role
+    organization_id: str
+    created_at: datetime
+
+
+class UserUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Role | None = None
+    name: str | None = Field(default=None, max_length=255)
 
 
 class ProjectIn(BaseModel):

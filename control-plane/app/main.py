@@ -21,6 +21,7 @@ from app.routers import (
     policies,
     quarantine,
     reports,
+    users,
 )
 from app.routers import auth as auth_router
 from app.settings import DEFAULT_SESSION_SECRET as _DEFAULT_SESSION_SECRET
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(investigate.router)
     app.include_router(fleet.router)
     app.include_router(detection_rules.router)
+    app.include_router(users.router)
     app.include_router(auth_router.router)
 
     @app.middleware("http")

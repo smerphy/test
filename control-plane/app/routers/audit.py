@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
-from app.models import AuditEvent, Organization
+from app.models import AuditEvent, Organization, Role
 from app.schemas import AuditEventIn, AuditEventOut, AuditIngestResult
 from app.services.audit_ingest import ingest_event
 
@@ -28,6 +28,7 @@ def ingest_events(
     events: Annotated[list[AuditEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> AuditIngestResult:
     accepted = 0
     errors: list[str] = []
