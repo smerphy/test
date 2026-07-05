@@ -176,13 +176,18 @@ def report_observation(
 
 def run_ai_sweep(
     session: Session, org: Organization, provider: LLMProvider
-) -> dict[str, int]:
-    """Proactively surface + score findings from recent activity."""
+) -> dict[str, Any]:
+    """Proactively surface + score findings from recent activity.
+
+    Returns counts plus ``new_finding_ids`` (newly-created findings) so callers
+    can dispatch them to notification connectors, matching the deterministic
+    detection engine's contract."""
     digest = build_pattern_summary(session, org.id)
     scores = sweep_activity(provider, activity_digest=digest)
     created = updated = 0
+    new_finding_ids: list[str] = []
     for score in scores:
-        _, was_created = store_scored_finding(
+        finding, was_created = store_scored_finding(
             session,
             org,
             score=score,
@@ -192,10 +197,16 @@ def run_ai_sweep(
         )
         if was_created:
             created += 1
+            new_finding_ids.append(finding.id)
         else:
             updated += 1
     session.flush()
-    return {"surfaced": len(scores), "created": created, "updated": updated}
+    return {
+        "surfaced": len(scores),
+        "created": created,
+        "updated": updated,
+        "new_finding_ids": new_finding_ids,
+    }
 
 
 __all__ = ["report_observation", "run_ai_sweep", "store_scored_finding"]

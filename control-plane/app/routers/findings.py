@@ -166,7 +166,14 @@ def sweep_findings(
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY, detail=str(exc)
         ) from exc
-    return run_ai_sweep(session, org, provider)
+    result = run_ai_sweep(session, org, provider)
+    # Notify newly-surfaced findings off the request path (same as the report
+    # endpoint), then return the int-only counts the response model expects.
+    new_ids = result.pop("new_finding_ids", [])
+    session.commit()
+    for finding_id in new_ids:
+        dispatch_finding_task.delay(finding_id)
+    return {k: int(result[k]) for k in ("surfaced", "created", "updated")}
 
 
 @router.get("/findings/{finding_id}", response_model=FindingOut)

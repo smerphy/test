@@ -269,3 +269,66 @@ def test_dispatch_finding_task_delivers(monkeypatch, session: Session, org: Orga
 
     # Unknown id is a safe no-op.
     assert dispatch_finding_task("does-not-exist") == {"forwarded": 0, "notified": 0}
+
+
+def test_run_ai_sweep_returns_new_finding_ids(
+    session: Session, org: Organization
+) -> None:
+    from app.services.ai.findings_ingest import run_ai_sweep
+
+    class _StubProvider:
+        def __init__(self) -> None:
+            self._out = [
+                '[{"title":"Anomalous shell burst","observation":"shell.exec x15",'
+                '"severity":"high","impact":"major","category":"policy_violation",'
+                '"rationale":"burst"}]',
+                '{"fidelity":0.8}',
+            ]
+
+        def complete(self, *a: Any, **k: Any) -> str:
+            return self._out.pop(0)
+
+    result = run_ai_sweep(session, org, _StubProvider())
+    session.commit()
+    assert result["created"] == 1
+    assert len(result["new_finding_ids"]) == 1
+
+
+def test_ai_sweep_task_dispatches_new_findings(monkeypatch, org: Organization) -> None:
+    """The scheduled sweep enqueues a dispatch for each newly-surfaced finding."""
+    import app.workers.tasks as tasks_mod
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        tasks_mod.dispatch_finding_task, "delay", lambda fid: calls.append(fid)
+    )
+    # The task re-imports its AI deps from their source modules at call time,
+    # so stub those to isolate the notify wiring (no real BYOK/provider).
+    import app.services.ai.config as ai_config
+    import app.services.ai.providers as ai_providers
+
+    monkeypatch.setattr(ai_config, "ai_available", lambda org: True)
+    monkeypatch.setattr(ai_config, "org_llm_config", lambda org, s: {"stub": True})
+    monkeypatch.setattr(ai_providers, "get_provider", lambda cfg: object())
+
+    import app.services.ai.budget as budget_mod
+
+    monkeypatch.setattr(budget_mod, "is_over_budget", lambda *a, **k: False)
+    monkeypatch.setattr(budget_mod, "metered", lambda p, *a, **k: p)
+
+    import app.services.ai.findings_ingest as ingest_mod
+
+    monkeypatch.setattr(
+        ingest_mod,
+        "run_ai_sweep",
+        lambda session, org, provider: {
+            "surfaced": 1,
+            "created": 1,
+            "updated": 0,
+            "new_finding_ids": ["f-abc"],
+        },
+    )
+
+    out = tasks_mod.ai_sweep_findings_task()
+    assert out == {"orgs_swept": 1, "created": 1, "notified": 1}
+    assert calls == ["f-abc"]

@@ -189,7 +189,7 @@ def ai_sweep_findings_task() -> dict[str, int]:
     from app.services.ai.providers import LLMError, get_provider
 
     settings = get_settings()
-    orgs_swept = created = 0
+    orgs_swept = created = notified = 0
     with SessionLocal() as session:
         orgs = list(session.execute(select(Organization)).scalars())
         for org in orgs:
@@ -205,8 +205,14 @@ def ai_sweep_findings_task() -> dict[str, int]:
                 continue
             orgs_swept += 1
             created += result.get("created", 0)
+            new_ids = result.get("new_finding_ids", [])
+            # Commit so the dispatch worker (own session) sees the findings,
+            # then notify each newly-surfaced finding to the SIEM/connectors.
             session.commit()
-    return {"orgs_swept": orgs_swept, "created": created}
+            for finding_id in new_ids:
+                dispatch_finding_task.delay(finding_id)
+                notified += 1
+    return {"orgs_swept": orgs_swept, "created": created, "notified": notified}
 
 
 @celery_app.task(name="praetor.telemetry.apply_retention")
