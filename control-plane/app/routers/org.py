@@ -55,5 +55,8 @@ def update_org(
         org.finding_webhook_url = url
     if "finding_min_severity" in fields and fields["finding_min_severity"] is not None:
         org.finding_min_severity = str(fields["finding_min_severity"])
+    # Present-but-null clears the budget (tracking without a cap).
+    if "monthly_cost_budget_usd" in fields:
+        org.monthly_cost_budget_usd = fields["monthly_cost_budget_usd"]
     session.flush()
     return org

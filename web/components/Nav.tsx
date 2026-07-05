@@ -5,6 +5,7 @@ import { roleAtLeast } from "@/lib/rbac";
 type Href =
   | "/"
   | "/monitoring"
+  | "/finance"
   | "/security"
   | "/findings"
   | "/threat"
@@ -22,6 +23,7 @@ type Href =
 const LINKS: { href: Href; label: string; minRole?: Role }[] = [
   { href: "/", label: "Dashboard" },
   { href: "/monitoring", label: "Monitoring" },
+  { href: "/finance", label: "Cost" },
   { href: "/security", label: "Security" },
   { href: "/findings", label: "Findings" },
   { href: "/threat", label: "Threat Intel" },

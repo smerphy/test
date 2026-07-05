@@ -232,6 +232,24 @@ export const api = {
   // Event store / telemetry
   getTelemetryStats: () => call<TelemetryStats>("/telemetry/stats"),
 
+  // FinOps / financial tracking
+  getCostSummary: (params: Record<string, string | undefined> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    const path = qs.toString()
+      ? `/finance/summary?${qs.toString()}`
+      : "/finance/summary";
+    return call<CostSummary>(path);
+  },
+  getBudgetStatus: () => call<BudgetStatus>("/finance/budget"),
+  setCostBudget: (monthly_cost_budget_usd: number | null) =>
+    call<{ monthly_cost_budget_usd: number | null }>("/org", {
+      method: "PATCH",
+      body: { monthly_cost_budget_usd },
+    }),
+
   // Threat intelligence
   listFeeds: () => call<ThreatFeed[]>("/threat/feeds"),
   createFeed: (body: {
@@ -295,6 +313,46 @@ export interface RuleSuggestion {
   reviewed_by: string | null;
   created_rule_id: string | null;
   created_at: string;
+}
+
+export interface CostBreakdownItem {
+  key: string;
+  cost_usd: number;
+  calls: number;
+  total_tokens: number;
+  errors: number;
+  share: number;
+}
+
+export interface CostSummary {
+  since: string;
+  until: string;
+  total: {
+    cost_usd: number;
+    calls: number;
+    total_tokens: number;
+    errors: number;
+    error_rate: number;
+    avg_cost_per_call: number;
+  };
+  by_model: CostBreakdownItem[];
+  by_agent: CostBreakdownItem[];
+  by_project: CostBreakdownItem[];
+  daily: { day: string; cost_usd: number; calls: number; total_tokens: number }[];
+}
+
+export interface BudgetStatus {
+  month: string;
+  agent_spend_usd: number;
+  budget_usd: number | null;
+  pct_used: number | null;
+  projected_month_usd: number;
+  forecast_over_budget: boolean;
+  daily_burn_usd: number;
+  days_elapsed: number;
+  days_in_month: number;
+  advisory_spend_usd: number;
+  advisory_budget_usd: number | null;
 }
 
 export interface TelemetryStats {

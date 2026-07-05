@@ -50,6 +50,7 @@ class OrganizationOut(BaseModel):
     auto_quarantine: bool = False
     finding_webhook_url: str | None = None
     finding_min_severity: str = "high"
+    monthly_cost_budget_usd: float | None = None
 
 
 class OrganizationUpdateIn(BaseModel):
@@ -62,6 +63,9 @@ class OrganizationUpdateIn(BaseModel):
     # Forward new findings (>= finding_min_severity) to this webhook / SIEM.
     finding_webhook_url: str | None = Field(default=None, max_length=1024)
     finding_min_severity: FindingSeverity | None = None
+    # Monthly agent LLM spend budget (USD) powering the FinOps forecast. Send
+    # null to clear (track without a budget); 0 means any spend is over budget.
+    monthly_cost_budget_usd: float | None = Field(default=None, ge=0)
 
 
 class UserOut(BaseModel):

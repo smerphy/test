@@ -90,6 +90,13 @@ class Organization(IdMixin, TimestampMixin, Base):
     # endpoints 402 and passive triage degrades to non-AI scoring.
     ai_monthly_budget_usd: Mapped[float | None] = mapped_column(Float)
 
+    # --- FinOps: agent LLM spend budget ----------------------------------
+    # Monthly budget (USD) for the org's *agent* Claude/LLM spend as tracked by
+    # MetricEvent.cost_usd. Distinct from ai_monthly_budget_usd (which caps
+    # Praetor's own advisory service). Powers the financial-tracking section's
+    # burn-down + end-of-month forecast. Null = no budget (tracking only).
+    monthly_cost_budget_usd: Mapped[float | None] = mapped_column(Float)
+
     users: Mapped[list[User]] = relationship(back_populates="organization")
     projects: Mapped[list[Project]] = relationship(back_populates="organization")  # type: ignore[name-defined]  # noqa: F821
 
