@@ -27,6 +27,7 @@ from app.models import (
     risk_score,
 )
 from app.schemas import FindingOut, FindingReportIn, FindingUpdateIn
+from app.services.ai.budget import is_over_budget, metered
 from app.services.ai.config import ai_available, org_llm_config
 from app.services.ai.findings_ingest import report_observation, run_ai_sweep
 from app.services.ai.providers import LLMError, get_provider
@@ -101,11 +102,13 @@ def report_finding(
     opted in; otherwise stored with the suggested severity and flagged
     unscored. Deduplicated into the findings dashboard."""
     provider = None
-    if ai_available(org):
+    # Score with AI when enabled and under budget; otherwise store unscored
+    # (an over-budget or unavailable model must not block ingestion).
+    if ai_available(org) and not is_over_budget(session, org, settings):
         config = org_llm_config(org, settings)
         if config is not None:
             try:
-                provider = get_provider(config)
+                provider = metered(get_provider(config), session, org, settings)
             except LLMError:
                 provider = None  # fall back to unscored storage
     return report_observation(
@@ -139,10 +142,15 @@ def sweep_findings(
             status.HTTP_409_CONFLICT,
             detail="AI advisory is not enabled; configure it via PATCH /ai/config",
         )
+    if is_over_budget(session, org, settings):
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            detail="monthly AI budget exceeded for this organization",
+        )
     config = org_llm_config(org, settings)
     assert config is not None
     try:
-        provider = get_provider(config)
+        provider = metered(get_provider(config), session, org, settings)
     except LLMError as exc:
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY, detail=str(exc)

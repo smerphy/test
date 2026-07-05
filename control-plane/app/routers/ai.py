@@ -30,6 +30,7 @@ from app.schemas import (
     AgentOpinionOut,
     AIConfigOut,
     AIConfigUpdateIn,
+    AIUsageOut,
     AssessIn,
     AssessOut,
     DetectionRuleSpec,
@@ -41,6 +42,12 @@ from app.services.ai.agents import (
     assess_action,
     propose_rules,
     reconcile,
+)
+from app.services.ai.budget import (
+    current_month,
+    is_over_budget,
+    metered,
+    month_to_date,
 )
 from app.services.ai.config import (
     ai_available,
@@ -63,6 +70,7 @@ def _config_out(org: Organization) -> AIConfigOut:
         ai_provider=org.ai_provider,
         ai_model=org.ai_model,
         ai_base_url=org.ai_base_url,
+        ai_monthly_budget_usd=org.ai_monthly_budget_usd,
         ai_key_set=bool(org.ai_api_key),
     )
 
@@ -73,6 +81,26 @@ def get_config(
     _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> AIConfigOut:
     return _config_out(org)
+
+
+@router.get("/ai/usage", response_model=AIUsageOut)
+def get_usage(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+) -> AIUsageOut:
+    """Month-to-date BYOK token usage, estimated cost, and budget status."""
+    usage = month_to_date(session, org.id)
+    return AIUsageOut(
+        month=current_month(),
+        input_tokens=usage.input_tokens if usage else 0,
+        output_tokens=usage.output_tokens if usage else 0,
+        cost_usd=round(usage.cost_usd, 4) if usage else 0.0,
+        call_count=usage.call_count if usage else 0,
+        budget_usd=org.ai_monthly_budget_usd,
+        over_budget=is_over_budget(session, org, settings),
+    )
 
 
 @router.patch("/ai/config", response_model=AIConfigOut)
@@ -101,6 +129,9 @@ def update_config(
     ):
         if key in fields and fields[key] is not None:
             setattr(org, key, fields[key])
+    if "ai_monthly_budget_usd" in fields:
+        # Explicit null clears the budget.
+        org.ai_monthly_budget_usd = fields["ai_monthly_budget_usd"]
     if "ai_api_key" in fields:
         # Empty string clears the stored key; otherwise encrypt it at rest.
         org.ai_api_key = seal(fields["ai_api_key"] or None)
@@ -119,19 +150,34 @@ def _require_ai(org: Organization) -> None:
         )
 
 
+def _enforce_budget(
+    session: Session, org: Organization, settings: Settings
+) -> None:
+    if is_over_budget(session, org, settings):
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                "monthly AI budget exceeded for this organization; raise "
+                "ai_monthly_budget_usd or wait for the next billing month"
+            ),
+        )
+
+
 @router.post("/ai/assess", response_model=AssessOut)
 def assess(
     body: AssessIn,
     org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
     _p: Principal = Depends(require_role(Role.ANALYST)),
     _rl: None = Depends(rate_limit("ai")),
 ) -> AssessOut:
     _require_ai(org)
+    _enforce_budget(session, org, settings)
     config = org_llm_config(org, settings)
     assert config is not None  # guaranteed by _require_ai
     try:
-        provider = get_provider(config)
+        provider = metered(get_provider(config), session, org, settings)
     except LLMError as exc:
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY, detail=str(exc)
@@ -180,10 +226,11 @@ def suggest_rules(
     _rl: None = Depends(rate_limit("ai")),
 ) -> list[RuleSuggestion]:
     _require_ai(org)
+    _enforce_budget(session, org, settings)
     config = org_llm_config(org, settings)
     assert config is not None
     try:
-        provider = get_provider(config)
+        provider = metered(get_provider(config), session, org, settings)
     except LLMError as exc:
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY, detail=str(exc)

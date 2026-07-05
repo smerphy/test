@@ -733,6 +733,7 @@ class AIConfigOut(BaseModel):
     ai_provider: str
     ai_model: str
     ai_base_url: str | None = None
+    ai_monthly_budget_usd: float | None = None
     # The key itself is never returned; only whether one is stored.
     ai_key_set: bool = False
 
@@ -744,8 +745,20 @@ class AIConfigUpdateIn(BaseModel):
     ai_provider: Literal["anthropic", "openai_compat"] | None = None
     ai_model: str | None = Field(default=None, max_length=128)
     ai_base_url: str | None = Field(default=None, max_length=1024)
+    ai_monthly_budget_usd: float | None = Field(default=None, ge=0)
     # Write-only. Provide to set the key; empty string clears it.
     ai_api_key: str | None = Field(default=None, max_length=1024)
+
+
+class AIUsageOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    month: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    call_count: int
+    budget_usd: float | None = None
+    over_budget: bool = False
 
 
 class AssessIn(BaseModel):

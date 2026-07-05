@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # Cap on tokens per agent call (bounds cost + latency).
     ai_max_tokens: int = Field(default=1024)
     ai_request_timeout_seconds: float = Field(default=30.0)
+    # Estimated BYOK price per million tokens (used only for budget guardrails;
+    # a rough proxy across vendors/models). Override per deployment.
+    ai_price_input_per_mtok: float = Field(default=3.0)
+    ai_price_output_per_mtok: float = Field(default=15.0)
 
     # --- Scale-out event store ------------------------------------------
     # Cold tier: append-only NDJSON archive root for full-fidelity telemetry.

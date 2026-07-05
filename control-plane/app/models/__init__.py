@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.ai_usage import AIUsage
 from app.models.alert import (
     AlertAggregation,
     AlertChannel,
@@ -49,6 +50,7 @@ __all__ = [
     "EXACT_MATCH_TYPES",
     "OPEN_FINDING_STATUSES",
     "TLP",
+    "AIUsage",
     "Agent",
     "AlertAggregation",
     "AlertChannel",

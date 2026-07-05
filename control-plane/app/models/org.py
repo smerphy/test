@@ -79,8 +79,11 @@ class Organization(IdMixin, TimestampMixin, Base):
     )
     # Optional base-URL override (self-hosted gateway / non-default vendor).
     ai_base_url: Mapped[str | None] = mapped_column(String(1024))
-    # BYO API key. Secret: never serialized back out (responses mask it).
+    # BYO API key. Secret: encrypted at rest, never serialized back out.
     ai_api_key: Mapped[str | None] = mapped_column(String(1024))
+    # Monthly BYOK spend cap (USD). Null = no budget. Over budget, explicit AI
+    # endpoints 402 and passive triage degrades to non-AI scoring.
+    ai_monthly_budget_usd: Mapped[float | None] = mapped_column(Float)
 
     users: Mapped[list[User]] = relationship(back_populates="organization")
     projects: Mapped[list[Project]] = relationship(back_populates="organization")  # type: ignore[name-defined]  # noqa: F821

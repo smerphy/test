@@ -133,6 +133,7 @@ def ai_sweep_findings_task() -> dict[str, int]:
     Schedule via Celery beat. No-op for orgs that have not opted in / lack a
     key. Each org's sweep is best-effort so one failure can't stop the sweep.
     """
+    from app.services.ai.budget import is_over_budget, metered
     from app.services.ai.config import ai_available, org_llm_config
     from app.services.ai.findings_ingest import run_ai_sweep
     from app.services.ai.providers import LLMError, get_provider
@@ -142,13 +143,13 @@ def ai_sweep_findings_task() -> dict[str, int]:
     with SessionLocal() as session:
         orgs = list(session.execute(select(Organization)).scalars())
         for org in orgs:
-            if not ai_available(org):
+            if not ai_available(org) or is_over_budget(session, org, settings):
                 continue
             config = org_llm_config(org, settings)
             if config is None:
                 continue
             try:
-                provider = get_provider(config)
+                provider = metered(get_provider(config), session, org, settings)
                 result = run_ai_sweep(session, org, provider)
             except LLMError:
                 continue
