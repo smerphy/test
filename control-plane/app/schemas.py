@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from app.models import (
+    TLP,
     AlertAggregation,
     AlertChannel,
     AlertComparison,
@@ -23,9 +24,11 @@ from app.models import (
     AlertSeverity,
     AlertState,
     ApprovalStatus,
+    FeedFormat,
     FindingCategory,
     FindingSeverity,
     FindingStatus,
+    IndicatorType,
     QuarantineSource,
     ReportStatus,
     Role,
@@ -577,3 +580,101 @@ class AlertAcknowledgeIn(BaseModel):
     acknowledged_by: str = Field(..., min_length=1, max_length=255)
     note: str | None = None
 
+
+
+# ----------------------------------------------------------------
+# Threat intelligence
+# ----------------------------------------------------------------
+
+
+class ThreatFeedIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=2000)
+    # Null URL = a manually curated feed.
+    url: str | None = Field(default=None, max_length=2048)
+    format: FeedFormat
+    default_indicator_type: IndicatorType | None = None
+    auth_header: str | None = Field(default=None, max_length=1024)
+    enabled: bool = True
+    tlp: TLP = TLP.AMBER
+    default_confidence: int = Field(default=50, ge=0, le=100)
+    default_severity: FindingSeverity = FindingSeverity.HIGH
+    refresh_minutes: int = Field(default=60, ge=5, le=10080)
+
+
+class ThreatFeedUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=2000)
+    url: str | None = Field(default=None, max_length=2048)
+    format: FeedFormat | None = None
+    default_indicator_type: IndicatorType | None = None
+    auth_header: str | None = Field(default=None, max_length=1024)
+    enabled: bool | None = None
+    tlp: TLP | None = None
+    default_confidence: int | None = Field(default=None, ge=0, le=100)
+    default_severity: FindingSeverity | None = None
+    refresh_minutes: int | None = Field(default=None, ge=5, le=10080)
+
+
+class ThreatFeedOut(BaseModel):
+    model_config = _BASE
+    id: str
+    organization_id: str
+    name: str
+    description: str | None
+    url: str | None
+    format: str
+    default_indicator_type: str | None
+    enabled: bool
+    tlp: str
+    default_confidence: int
+    default_severity: str
+    refresh_minutes: int
+    last_synced_at: datetime | None
+    last_status: str
+    last_error: str | None
+    indicator_count: int
+    created_at: datetime
+
+
+class ThreatFeedSyncResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    created: int
+    updated: int
+    status: str
+    error: str | None = None
+
+
+class ThreatIndicatorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: IndicatorType
+    value: str = Field(..., min_length=1, max_length=1024)
+    confidence: int = Field(default=50, ge=0, le=100)
+    severity: FindingSeverity = FindingSeverity.HIGH
+    tags: list[str] = Field(default_factory=list)
+    references: list[str] = Field(default_factory=list)
+    description: str | None = Field(default=None, max_length=2000)
+    tlp: TLP = TLP.AMBER
+    expires_at: datetime | None = None
+
+
+class ThreatIndicatorOut(BaseModel):
+    model_config = _BASE
+    id: str
+    organization_id: str
+    feed_id: str | None
+    type: str
+    value: str
+    confidence: int
+    severity: str
+    tags: list[str]
+    references: list[str]
+    description: str | None
+    tlp: str
+    enabled: bool
+    first_seen: datetime
+    last_seen: datetime
+    expires_at: datetime | None
+    created_at: datetime

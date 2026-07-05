@@ -30,9 +30,20 @@ from app.models.policy import (
 )
 from app.models.quarantine import Quarantine, QuarantineSource
 from app.models.report import ComplianceReport, ReportStatus
+from app.models.threat_intel import (
+    EXACT_MATCH_TYPES,
+    TLP,
+    FeedFormat,
+    FeedSyncStatus,
+    IndicatorType,
+    ThreatFeed,
+    ThreatIndicator,
+)
 
 __all__ = [
+    "EXACT_MATCH_TYPES",
     "OPEN_FINDING_STATUSES",
+    "TLP",
     "Agent",
     "AlertAggregation",
     "AlertChannel",
@@ -47,10 +58,13 @@ __all__ = [
     "AuditEvent",
     "ComplianceReport",
     "DetectionRule",
+    "FeedFormat",
+    "FeedSyncStatus",
     "Finding",
     "FindingCategory",
     "FindingSeverity",
     "FindingStatus",
+    "IndicatorType",
     "MetricEvent",
     "Organization",
     "PolicyBundle",
@@ -62,5 +76,7 @@ __all__ = [
     "ReportStatus",
     "Role",
     "RolloutState",
+    "ThreatFeed",
+    "ThreatIndicator",
     "User",
 ]

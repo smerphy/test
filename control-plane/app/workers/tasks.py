@@ -8,11 +8,13 @@ in both environments without branching.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 
 from app.celery_app import celery_app
 from app.db import SessionLocal
-from app.models import AlertRule, ComplianceReport, Organization
+from app.models import AlertRule, ComplianceReport, Organization, ThreatFeed
 from app.schemas import AuditEventIn, MetricEventIn
 from app.services.alerts import evaluate_rule
 from app.services.approvals import expire_stale_approvals
@@ -22,6 +24,7 @@ from app.services.forward import forward_finding
 from app.services.metrics import ingest_metric
 from app.services.notify import deliver_approval_notification
 from app.services.report import generate_report
+from app.services.threat_intel import sync_feed
 
 
 @celery_app.task(name="praetor.audit.process_batch")
@@ -121,6 +124,53 @@ def run_detections_task() -> dict[str, int]:
     }
 
 
+@celery_app.task(name="praetor.threat_intel.sync_due")
+def sync_threat_feeds_task() -> dict[str, int]:
+    """Sync every enabled remote feed whose refresh interval has elapsed.
+
+    Schedule via Celery beat. Each feed's sync is self-contained and records
+    its own error status, so one bad feed can't fail the sweep.
+    """
+    now = datetime.now(UTC)
+    synced = created = updated = errors = 0
+    with SessionLocal() as session:
+        feeds = list(
+            session.execute(
+                select(ThreatFeed).where(
+                    ThreatFeed.enabled.is_(True),
+                    ThreatFeed.url.is_not(None),
+                )
+            ).scalars()
+        )
+        for feed in feeds:
+            due_at = (
+                feed.last_synced_at + timedelta(minutes=feed.refresh_minutes)
+                if feed.last_synced_at is not None
+                else None
+            )
+            # last_synced_at is stored tz-aware in Postgres but naive under
+            # SQLite; normalize both sides to naive-UTC for comparison.
+            if due_at is not None:
+                due_cmp = (
+                    due_at.replace(tzinfo=None) if due_at.tzinfo else due_at
+                )
+                if due_cmp > now.replace(tzinfo=None):
+                    continue
+            result = sync_feed(session, feed, now=now)
+            synced += 1
+            created += result.get("created", 0)
+            updated += result.get("updated", 0)
+            if result.get("status") == "error":
+                errors += 1
+        session.commit()
+    return {
+        "feeds_synced": synced,
+        "created": created,
+        "updated": updated,
+        "errors": errors,
+    }
+
+
 @celery_app.task(name="praetor.alerts.evaluate_all")
 def evaluate_all_alerts_task() -> dict[str, int]:
     """Evaluate every enabled alert rule across every org.
@@ -152,4 +202,5 @@ __all__ = [
     "process_audit_batch_task",
     "process_metric_batch_task",
     "run_detections_task",
+    "sync_threat_feeds_task",
 ]

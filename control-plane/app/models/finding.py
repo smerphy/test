@@ -48,6 +48,7 @@ class FindingCategory(StrEnum):
     POLICY_VIOLATION = "policy_violation"
     APPROVAL_ABUSE = "approval_abuse"
     ANOMALY = "anomaly"
+    THREAT_INTEL = "threat_intel"
 
 
 class FindingStatus(StrEnum):

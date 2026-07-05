@@ -21,6 +21,7 @@ from app.routers import (
     policies,
     quarantine,
     reports,
+    threat_intel,
     users,
 )
 from app.routers import auth as auth_router
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(investigate.router)
     app.include_router(fleet.router)
     app.include_router(detection_rules.router)
+    app.include_router(threat_intel.router)
     app.include_router(users.router)
     app.include_router(auth_router.router)
 

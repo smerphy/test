@@ -41,6 +41,10 @@ celery_app.conf.beat_schedule = {
         "task": "praetor.detections.run_all",
         "schedule": 120.0,
     },
+    "sync-threat-feeds": {
+        "task": "praetor.threat_intel.sync_due",
+        "schedule": 300.0,
+    },
 }
 
 

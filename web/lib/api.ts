@@ -205,7 +205,96 @@ export const api = {
   listMembers: () => call<Member[]>("/users"),
   updateMember: (id: string, body: { role?: Role; name?: string }) =>
     call<Member>(`/users/${id}`, { method: "PATCH", body }),
+
+  // Threat intelligence
+  listFeeds: () => call<ThreatFeed[]>("/threat/feeds"),
+  createFeed: (body: {
+    name: string;
+    format: string;
+    url?: string;
+    default_indicator_type?: string;
+    description?: string;
+  }) => call<ThreatFeed>("/threat/feeds", { method: "POST", body }),
+  syncFeed: (id: string) =>
+    call<FeedSyncResult>(`/threat/feeds/${id}/sync`, { method: "POST" }),
+  listIndicators: (params: Record<string, string | undefined> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    const path = qs.toString()
+      ? `/threat/indicators?${qs.toString()}`
+      : "/threat/indicators";
+    return call<ThreatIndicator[]>(path);
+  },
+  createIndicator: (body: {
+    type: string;
+    value: string;
+    severity?: string;
+    confidence?: number;
+    description?: string;
+  }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
 };
+
+export type IndicatorType =
+  | "domain"
+  | "ip"
+  | "url"
+  | "sha256"
+  | "md5"
+  | "email"
+  | "tool_name"
+  | "package"
+  | "prompt_signature"
+  | "regex";
+
+export type FeedFormat = "json" | "csv" | "plaintext" | "stix" | "misp";
+
+export interface ThreatFeed {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  url: string | null;
+  format: FeedFormat;
+  default_indicator_type: IndicatorType | null;
+  enabled: boolean;
+  tlp: string;
+  default_confidence: number;
+  default_severity: string;
+  refresh_minutes: number;
+  last_synced_at: string | null;
+  last_status: string;
+  last_error: string | null;
+  indicator_count: number;
+  created_at: string;
+}
+
+export interface FeedSyncResult {
+  created: number;
+  updated: number;
+  status: string;
+  error: string | null;
+}
+
+export interface ThreatIndicator {
+  id: string;
+  organization_id: string;
+  feed_id: string | null;
+  type: IndicatorType;
+  value: string;
+  confidence: number;
+  severity: FindingSeverity;
+  tags: string[];
+  references: string[];
+  description: string | null;
+  tlp: string;
+  enabled: boolean;
+  first_seen: string;
+  last_seen: string;
+  expires_at: string | null;
+  created_at: string;
+}
 
 export type Role = "viewer" | "analyst" | "admin" | "owner";
 

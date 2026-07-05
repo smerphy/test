@@ -25,9 +25,11 @@ from app.models import (
     Finding,
     FindingCategory,
     FindingSeverity,
+    IndicatorType,
     Organization,
 )
 from app.services.quarantine import auto_quarantine_for_finding
+from app.services.threat_intel import build_index, match_activity, severity_rank
 
 # Tunables (would move to per-org config later).
 DEFAULT_WINDOW_MINUTES = 60
@@ -325,6 +327,108 @@ def _detect_custom_rules(
     return drafts
 
 
+def _threat_intel_mapping(types: set[str]) -> tuple[str | None, str | None]:
+    """Map the matched indicator types to an ATLAS technique + OWASP LLM id."""
+    if types & {IndicatorType.PROMPT_SIGNATURE.value, IndicatorType.REGEX.value}:
+        return "AML.T0051", "LLM01"  # LLM Prompt Injection
+    if types & {
+        IndicatorType.DOMAIN.value,
+        IndicatorType.IP.value,
+        IndicatorType.URL.value,
+        IndicatorType.EMAIL.value,
+    }:
+        return "AML.T0024", "LLM02"  # Exfiltration / insecure output → egress
+    # hash / package / tool_name → supply-chain / malicious tooling.
+    return "AML.T0010", "LLM05"  # ML Supply Chain Compromise
+
+
+def _detect_threat_intel(
+    session: Session, org_id: str, since: datetime
+) -> list[FindingDraft]:
+    """Match window events against the org's active threat-intel indicators.
+
+    Any tool call whose name or arguments contain a known-bad indicator
+    (malicious domain/IP/URL/hash, malicious tool/package, or a
+    prompt-injection signature) raises a threat-intel finding for its session.
+    """
+    index = build_index(session, org_id)
+    if index.is_empty():
+        return []
+
+    rows = session.execute(
+        select(
+            AuditEvent.id,
+            AuditEvent.agent_id,
+            AuditEvent.session_id,
+            AuditEvent.tool_name,
+            AuditEvent.tool_arguments,
+        )
+        .where(
+            AuditEvent.organization_id == org_id,
+            AuditEvent.timestamp >= since,
+        )
+        .order_by(AuditEvent.timestamp.asc())
+        .limit(5_000)
+    ).all()
+
+    @dataclass
+    class _Acc:
+        agent_id: str
+        event_ids: list[str] = field(default_factory=list)
+        indicators: dict[str, Any] = field(default_factory=dict)
+        match_count: int = 0
+
+    by_session: dict[str, _Acc] = {}
+    for r in rows:
+        hits = match_activity(index, r.tool_name, r.tool_arguments)
+        if not hits:
+            continue
+        acc = by_session.setdefault(r.session_id, _Acc(agent_id=r.agent_id))
+        acc.match_count += 1
+        if len(acc.event_ids) < 50:
+            acc.event_ids.append(r.id)
+        for meta in hits:
+            acc.indicators[meta.id] = meta
+
+    drafts: list[FindingDraft] = []
+    for session_id, acc in by_session.items():
+        metas = list(acc.indicators.values())
+        top = max(metas, key=lambda m: severity_rank(m.severity))
+        types = {m.type for m in metas}
+        atlas, owasp = _threat_intel_mapping(types)
+        drafts.append(
+            FindingDraft(
+                rule_id="threat-intel-match",
+                title=(
+                    f"Threat-intel match in session {session_id}: "
+                    f"{len(metas)} indicator(s)"
+                ),
+                severity=FindingSeverity(top.severity),
+                category=FindingCategory.THREAT_INTEL,
+                dedup_key=f"threat-intel:{session_id}",
+                count=acc.match_count,
+                agent_id=acc.agent_id,
+                session_id=session_id,
+                evidence={
+                    "event_ids": acc.event_ids,
+                    "indicators": [
+                        {
+                            "id": m.id,
+                            "type": m.type,
+                            "value": m.value,
+                            "severity": m.severity,
+                            "confidence": m.confidence,
+                        }
+                        for m in metas[:50]
+                    ],
+                },
+                atlas_technique=atlas,
+                owasp_llm=owasp,
+            )
+        )
+    return drafts
+
+
 def _upsert_finding(
     session: Session, org_id: str, draft: FindingDraft, now: datetime
 ) -> tuple[Finding, bool]:
@@ -388,6 +492,7 @@ def run_detections(
     drafts += _detect_approval_abuse(rows)
     drafts += _detect_new_tool_anomaly(session, org_id, rows, baseline_since, since)
     drafts += _detect_custom_rules(session, org_id, rows)
+    drafts += _detect_threat_intel(session, org_id, since)
 
     created = updated = 0
     new_findings: list[Finding] = []
