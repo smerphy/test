@@ -132,6 +132,35 @@ def run_detections_task() -> dict[str, int]:
     }
 
 
+@celery_app.task(name="praetor.findings.dispatch")
+def dispatch_finding_task(finding_id: str) -> dict[str, int]:
+    """Forward + notify a single finding to the org's SIEM/webhook and typed
+    connectors.
+
+    Enqueued from the request path (agent-reported / AI-swept "ambient"
+    findings) so notifications go out immediately instead of waiting for the
+    next detection cycle. Best-effort; never raises. Runs inline under eager
+    mode (tests/dev) and on the Celery worker in production.
+    """
+    from app.models import Finding
+    from app.services.forward import forward_finding
+    from app.services.notify_connectors import dispatch_finding
+
+    forwarded = notified = 0
+    with SessionLocal() as session:
+        finding = session.get(Finding, finding_id)
+        if finding is None:
+            return {"forwarded": 0, "notified": 0}
+        org = session.get(Organization, finding.organization_id)
+        if org is None:
+            return {"forwarded": 0, "notified": 0}
+        if forward_finding(session, finding_id):
+            forwarded = 1
+        notified = dispatch_finding(session, finding, org)
+        session.commit()
+    return {"forwarded": forwarded, "notified": notified}
+
+
 @celery_app.task(name="praetor.audit.anchor_all")
 def anchor_audit_task() -> dict[str, int]:
     """Anchor every org's audit chain heads. Schedule via Celery beat."""
@@ -189,7 +218,10 @@ def apply_retention_task() -> dict[str, int]:
     large backlog is drained across bounded batches within one run.
     """
     settings = get_settings()
-    if settings.audit_retention_days is None:
+    if (
+        settings.audit_retention_days is None
+        and not settings.audit_retention_days_by_class
+    ):
         return {"rolled": 0, "pruned": 0, "orgs": 0}
     rolled = pruned = orgs = 0
     with SessionLocal() as session:
@@ -201,6 +233,7 @@ def apply_retention_task() -> dict[str, int]:
                     session,
                     org_id=org_id,
                     retention_days=settings.audit_retention_days,
+                    retention_by_class=settings.audit_retention_days_by_class,
                     batch_size=settings.retention_batch_size,
                 )
                 rolled += result["rolled"]
@@ -285,6 +318,7 @@ __all__ = [
     "ai_sweep_findings_task",
     "anchor_audit_task",
     "apply_retention_task",
+    "dispatch_finding_task",
     "evaluate_all_alerts_task",
     "expire_stale_approvals_task",
     "generate_report_task",

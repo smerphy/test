@@ -31,6 +31,9 @@ def get_stats(
         {
             "archive_enabled": get_event_sink().enabled,
             "retention_days": settings.audit_retention_days,
+            "retention_days_by_classification": settings.audit_retention_days_by_class,
+            "classify_telemetry": settings.classify_telemetry,
+            "field_encryption_enabled": settings.telemetry_field_encryption,
         }
     )
     return stats
@@ -49,6 +52,7 @@ def run_retention(
         session,
         org_id=org.id,
         retention_days=settings.audit_retention_days,
+        retention_by_class=settings.audit_retention_days_by_class,
         now=datetime.now(UTC),
         batch_size=settings.retention_batch_size,
     )

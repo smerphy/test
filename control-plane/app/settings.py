@@ -110,9 +110,27 @@ class Settings(BaseSettings):
     # rolled into queryable daily aggregates and pruned from the hot table,
     # bounding the primary store under high volume. None = keep raw forever.
     audit_retention_days: int | None = Field(default=None)
+    # Classification-aware retention: per-classification override windows (days)
+    # keyed by the event's data classification, e.g.
+    # `PRAETOR_AUDIT_RETENTION_DAYS_BY_CLASS='{"restricted": 30}'` purges
+    # PII-bearing ("restricted") events after 30 days regardless of the default
+    # window above. Classifications not listed fall back to `audit_retention_days`.
+    audit_retention_days_by_class: dict[str, int] = Field(default_factory=dict)
     # Max raw rows a single retention pass rolls up + prunes (bounds the
     # transaction; the scheduled task re-runs until caught up).
     retention_batch_size: int = Field(default=50_000)
+
+    # --- PII: telemetry classification + field encryption ----------------
+    # Classify each audit event at ingest by scanning its payload for PII
+    # (emails/SSNs/cards/secrets/…): "restricted" if any is present, else
+    # "standard". Drives classification-aware retention. Off by default (adds a
+    # cheap regex scan to the ingest hot path).
+    classify_telemetry: bool = Field(default=False)
+    # Encrypt the richest sensitive audit payload fields (tool_arguments,
+    # context, suggested_transform) at rest with the same Fernet keys as
+    # `secret_keys`. A DB dump then leaks ciphertext, not raw tool arguments.
+    # Requires `secret_keys` to be set; off by default.
+    telemetry_field_encryption: bool = Field(default=False)
 
     # Celery broker + result backend. Default to in-process eager so tests
     # and `uvicorn` runs don't require Redis. Production: redis://...

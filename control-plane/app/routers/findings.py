@@ -35,6 +35,7 @@ from app.services.ai.providers import LLMError, get_provider
 from app.services.detections import run_detections
 from app.services.ratelimit import rate_limit
 from app.settings import Settings, get_settings
+from app.workers.tasks import dispatch_finding_task
 
 router = APIRouter(tags=["findings"])
 
@@ -113,7 +114,7 @@ def report_finding(
                 provider = metered(get_provider(config), session, org, settings)
             except LLMError:
                 provider = None  # fall back to unscored storage
-    return report_observation(
+    finding = report_observation(
         session,
         org,
         provider,
@@ -126,6 +127,14 @@ def report_finding(
         context=body.context,
         evidence=body.evidence or None,
     )
+    # Commit so the worker (own session) sees the finding, then dispatch to the
+    # SIEM/webhook + typed connectors off the request path. This is the ambient
+    # path: an agent-reported finding notifies immediately instead of waiting
+    # for the next detection cycle. Eager mode (tests/dev) runs it inline.
+    session.commit()
+    dispatch_finding_task.delay(finding.id)
+    session.refresh(finding)
+    return finding
 
 
 @router.post("/findings/sweep", response_model=dict[str, int])

@@ -20,6 +20,30 @@ from typing import Any
 # redaction) and the control plane (finding-ingest redaction) never drift.
 from praetor_engine.redaction import redact_text, redact_value
 
+# Data-classification labels used by classification-aware retention.
+CLASS_STANDARD = "standard"
+CLASS_RESTRICTED = "restricted"
+
+
+def classify_payload(*values: Any) -> str:
+    """Classify a set of payload values by scanning them for PII.
+
+    Returns ``"restricted"`` if any value contains a detectable PII token
+    (email, SSN, payment card, phone, secret/token), else ``"standard"``.
+    Uses the shared redaction detectors so classification never drifts from
+    what redaction would mask.
+    """
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            _, found = redact_text(value)
+        else:
+            _, found = redact_value(value)
+        if found:
+            return CLASS_RESTRICTED
+    return CLASS_STANDARD
+
 
 def scrub_subject(value: Any, subject: str) -> tuple[Any, int]:
     """Replace every occurrence of `subject` in a JSON-like structure with an
@@ -49,4 +73,11 @@ def scrub_subject(value: Any, subject: str) -> tuple[Any, int]:
     return value, 0
 
 
-__all__ = ["redact_text", "redact_value", "scrub_subject"]
+__all__ = [
+    "CLASS_RESTRICTED",
+    "CLASS_STANDARD",
+    "classify_payload",
+    "redact_text",
+    "redact_value",
+    "scrub_subject",
+]

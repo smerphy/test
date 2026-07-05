@@ -19,7 +19,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import ColumnElement, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import AuditDailyRollup, AuditEvent, MetricEvent
@@ -37,6 +37,40 @@ def _chunks(seq: list[str], size: int) -> list[list[str]]:
     return [seq[i : i + size] for i in range(0, len(seq), size)]
 
 
+def _aged_out_predicate(
+    now: datetime,
+    retention_days: int | None,
+    retention_by_class: dict[str, int],
+) -> ColumnElement[bool] | None:
+    """Build a WHERE predicate selecting events past their applicable window.
+
+    A classification named in ``retention_by_class`` ages out on its own
+    window; everything else uses the default ``retention_days``. Returns None
+    when nothing can be pruned (no windows configured)."""
+
+    def cutoff(days: int) -> datetime:
+        return _naive_utc(now - timedelta(days=days))
+
+    conds: list[ColumnElement[bool]] = [
+        and_(AuditEvent.classification == cls, AuditEvent.timestamp < cutoff(days))
+        for cls, days in retention_by_class.items()
+    ]
+    if retention_days is not None:
+        if retention_by_class:
+            # Default window applies to any classification without an override.
+            conds.append(
+                and_(
+                    AuditEvent.classification.notin_(list(retention_by_class)),
+                    AuditEvent.timestamp < cutoff(retention_days),
+                )
+            )
+        else:
+            conds.append(AuditEvent.timestamp < cutoff(retention_days))
+    if not conds:
+        return None
+    return or_(*conds)
+
+
 def apply_retention(
     session: Session,
     *,
@@ -44,17 +78,22 @@ def apply_retention(
     retention_days: int | None,
     now: datetime | None = None,
     batch_size: int = 50_000,
+    retention_by_class: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Roll up + prune raw audit events older than the retention window.
+    """Roll up + prune raw audit events older than their retention window.
+
+    A per-classification override map (``retention_by_class``) ages sensitive
+    ("restricted") events out on a tighter window than the default
+    ``retention_days`` — classification-aware retention for data minimization.
 
     Returns {rolled, pruned, buckets, caught_up}. A no-op (all zeros,
-    caught_up=True) when retention is disabled.
+    caught_up=True) when no retention window is configured.
     """
-    if retention_days is None:
-        return {"rolled": 0, "pruned": 0, "buckets": 0, "caught_up": True}
-
+    retention_by_class = retention_by_class or {}
     now = now or datetime.now(UTC)
-    cutoff = _naive_utc(now - timedelta(days=retention_days))
+    predicate = _aged_out_predicate(now, retention_days, retention_by_class)
+    if predicate is None:
+        return {"rolled": 0, "pruned": 0, "buckets": 0, "caught_up": True}
 
     rows = session.execute(
         select(
@@ -65,7 +104,7 @@ def apply_retention(
         )
         .where(
             AuditEvent.organization_id == org_id,
-            AuditEvent.timestamp < cutoff,
+            predicate,
         )
         .order_by(AuditEvent.timestamp.asc())
         .limit(batch_size)
@@ -137,6 +176,14 @@ def telemetry_stats(session: Session, org_id: str) -> dict[str, Any]:
             AuditEvent.organization_id == org_id
         )
     ).one()
+    by_class = {
+        str(cls): int(count)
+        for cls, count in session.execute(
+            select(AuditEvent.classification, func.count())
+            .where(AuditEvent.organization_id == org_id)
+            .group_by(AuditEvent.classification)
+        ).all()
+    }
     rollup_total, rollup_days, rollup_oldest = session.execute(
         select(
             func.coalesce(func.sum(AuditDailyRollup.count), 0),
@@ -151,6 +198,7 @@ def telemetry_stats(session: Session, org_id: str) -> dict[str, Any]:
     return {
         "hot_audit_events": hot_audit,
         "hot_metric_events": hot_metric,
+        "hot_audit_by_classification": by_class,
         "oldest_hot_event": _iso(oldest),
         "newest_hot_event": _iso(newest),
         "rollup_events_total": int(rollup_total or 0),

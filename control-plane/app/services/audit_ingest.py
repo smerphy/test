@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AuditEvent
 from app.schemas import AuditEventIn
+from app.services.pii import CLASS_STANDARD, classify_payload
+from app.settings import get_settings
 
 
 def _verify_hash(event: AuditEventIn) -> None:
@@ -88,6 +90,15 @@ def ingest_event(
             f"seq mismatch: expected {expected_seq}, got {event.seq}"
         )
 
+    # Server-side data classification (opt-in) drives classification-aware
+    # retention. Derived from a PII scan of the payload — never trusted from
+    # the client and not part of the hashed body.
+    classification = CLASS_STANDARD
+    if get_settings().classify_telemetry:
+        classification = classify_payload(
+            event.tool_arguments, event.context, event.reason
+        )
+
     row = AuditEvent(
         organization_id=org_id,
         seq=event.seq,
@@ -103,6 +114,7 @@ def ingest_event(
         suggested_transform=event.suggested_transform,
         context=event.context,
         evaluator_version=event.evaluator_version,
+        classification=classification,
         prev_hash=event.prev_hash,
         hash=event.hash,
     )
