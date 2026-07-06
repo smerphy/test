@@ -32,4 +32,9 @@ upstreams:
     command: ["mcp-server-filesystem", "/data"]
 
 listen:
-  transport: stdio                 # v1 sidecar entrypoint
+  # stdio: sidecar — the agent launches praetor-mcp as its MCP server command.
+  # streamable-http: deployment mode — serve an ASGI app; point the agent's MCP
+  # client at http://<bind><path>.
+  transport: streamable-http
+  bind: 127.0.0.1:8090
+  path: /mcp

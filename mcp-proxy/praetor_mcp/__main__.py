@@ -39,12 +39,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    # The event loop + MCP runtime live in server.run_proxy (optional dep).
-    import asyncio  # pragma: no cover
+    # The MCP runtime (optional dep) lives in server.py. Route by listen
+    # transport: stdio sidecar (event loop) vs streamable-HTTP (ASGI + uvicorn).
+    if config.listen_transport == "stdio":  # pragma: no cover
+        import asyncio
 
-    from praetor_mcp.server import run_proxy  # pragma: no cover
+        from praetor_mcp.server import run_proxy
 
-    asyncio.run(run_proxy(config))  # pragma: no cover
+        asyncio.run(run_proxy(config))
+    else:  # pragma: no cover
+        from praetor_mcp.server import run_http
+
+        run_http(config)
     return 0  # pragma: no cover
 
 

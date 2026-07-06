@@ -128,11 +128,12 @@ class ProxyServer:
             session = await self._connect_upstream(up)
             await self.add_upstream(up.name, session)
 
-    async def run(self) -> None:  # pragma: no cover
+    def build_server(self) -> Any:
+        """Build a low-level MCP Server whose handlers delegate to this proxy.
+        Shared by the stdio and streamable-HTTP listen transports."""
         from mcp.server.lowlevel import Server
 
         server: Server = Server("praetor-mcp")
-        await self._load_routes()
 
         @server.list_tools()
         async def _list_tools() -> list[Any]:
@@ -142,11 +143,18 @@ class ProxyServer:
         async def _call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
             return await self.handle_call_tool(name, arguments or {})
 
-        await self._serve(server)
+        return server
+
+    async def run(self) -> None:  # pragma: no cover
+        await self._load_routes()
+        await self._serve(self.build_server())
 
     async def _serve(self, server: Any) -> None:  # pragma: no cover
+        """Serve over stdio (the sidecar listen transport). Streamable-HTTP is
+        served via the ASGI app instead — see build_asgi_app / run_http."""
         from mcp.server.lowlevel import NotificationOptions
         from mcp.server.models import InitializationOptions
+        from mcp.server.stdio import stdio_server
 
         init = InitializationOptions(
             server_name="praetor-mcp",
@@ -156,22 +164,15 @@ class ProxyServer:
                 experimental_capabilities={},
             ),
         )
-        if self._config.listen_transport == "stdio":
-            from mcp.server.stdio import stdio_server
-
-            async with stdio_server() as (read, write):
-                await server.run(read, write, init)
-        else:
-            raise NotImplementedError(
-                "streamable-http listen transport is wired via the ASGI app in "
-                "deployment; use stdio for the v1 sidecar entrypoint"
-            )
+        async with stdio_server() as (read, write):
+            await server.run(read, write, init)
 
     async def aclose(self) -> None:
         await self._stack.aclose()
 
 
 async def run_proxy(config: ProxyConfig) -> None:  # pragma: no cover
+    """Run the stdio sidecar listen transport."""
     proxy = ProxyServer(config)
     try:
         await proxy.run()
@@ -179,4 +180,49 @@ async def run_proxy(config: ProxyConfig) -> None:  # pragma: no cover
         await proxy.aclose()
 
 
-__all__ = ["PolicyBlocked", "ProxyServer", "run_proxy"]
+def build_asgi_app(config: ProxyConfig) -> Any:
+    """Build the Streamable-HTTP ASGI app (deployment mode).
+
+    A Starlette app mounts the MCP session manager at ``config.listen_path``;
+    its lifespan connects the upstreams and runs the session manager. Serve it
+    with any ASGI server (see :func:`run_http`), or mount it in a larger app.
+    """
+    from contextlib import asynccontextmanager
+
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+
+    proxy = ProxyServer(config)
+    manager = StreamableHTTPSessionManager(app=proxy.build_server())
+
+    @asynccontextmanager
+    async def lifespan(_app: Any) -> Any:  # pragma: no cover - needs a running server
+        await proxy._load_routes()
+        async with manager.run():
+            try:
+                yield
+            finally:
+                await proxy.aclose()
+
+    return Starlette(
+        routes=[Mount(config.listen_path, app=manager.handle_request)],
+        lifespan=lifespan,
+    )
+
+
+def run_http(config: ProxyConfig) -> None:  # pragma: no cover - binds a port
+    """Serve the Streamable-HTTP ASGI app with uvicorn on ``listen_bind``."""
+    import uvicorn
+
+    host, _, port = (config.listen_bind or "127.0.0.1:8090").partition(":")
+    uvicorn.run(build_asgi_app(config), host=host or "127.0.0.1", port=int(port or 8090))
+
+
+__all__ = [
+    "PolicyBlocked",
+    "ProxyServer",
+    "build_asgi_app",
+    "run_http",
+    "run_proxy",
+]

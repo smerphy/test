@@ -35,11 +35,19 @@ chain.
 ```bash
 pip install "praetor-mcp[runtime]"          # [runtime] pulls the MCP transport
 praetor-mcp --check --config praetor-mcp.yaml   # validate config (no runtime)
-praetor-mcp --config praetor-mcp.yaml            # run the stdio sidecar
+praetor-mcp --config praetor-mcp.yaml            # run (stdio or streamable-http)
 ```
 
-See `praetor-mcp.example.yaml` for a full config. Point your agent's MCP client
-at `praetor-mcp` (stdio) instead of the upstream server.
+Two listen modes (set `listen.transport`):
+
+- **stdio** — sidecar; the agent launches `praetor-mcp` as its MCP server
+  command instead of the upstream server.
+- **streamable-http** — deployment mode; serves a Starlette ASGI app (mounted at
+  `listen.path`, default `/mcp`) via uvicorn on `listen.bind`. Point the agent's
+  MCP client at `http://<bind><path>`. Embed the app in your own ASGI stack with
+  `praetor_mcp.server.build_asgi_app(config)`.
+
+See `praetor-mcp.example.yaml` for a full config.
 
 ## Design
 

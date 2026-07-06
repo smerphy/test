@@ -51,6 +51,7 @@ class ProxyConfig:
     audit_log_path: str = "praetor-mcp-audit.jsonl"
     listen_transport: str = "streamable-http"
     listen_bind: str | None = "127.0.0.1:8090"
+    listen_path: str = "/mcp"
 
     def validate(self) -> None:
         if not self.upstreams:
@@ -95,6 +96,7 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
         audit_log_path=data.get("audit_log_path", "praetor-mcp-audit.jsonl"),
         listen_transport=listen.get("transport", "streamable-http"),
         listen_bind=listen.get("bind", "127.0.0.1:8090"),
+        listen_path=listen.get("path", "/mcp"),
     )
     config.validate()
     return config
