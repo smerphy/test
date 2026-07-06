@@ -29,6 +29,7 @@ from typing import Any
 from praetor_mcp.config import ProxyConfig, UpstreamConfig, build_client
 from praetor_mcp.gate import NAMESPACE_SEP, PolicyGate
 from praetor_mcp.identity import Identity, current_identity
+from praetor_mcp.metrics import ProxyMetrics
 
 
 class PolicyBlocked(RuntimeError):
@@ -53,7 +54,13 @@ class ProxyServer:
         # namespaced name -> (upstream_name, upstream_tool_name, ClientSession)
         self._routes: dict[str, tuple[str, str, Any]] = {}
         self._tools: list[Any] = []
+        self._upstream_cfg = {u.name: u for u in config.upstreams}
+        self._metrics = ProxyMetrics()
         self._stack = AsyncExitStack()
+
+    @property
+    def metrics(self) -> ProxyMetrics:
+        return self._metrics
 
     # --- transport-agnostic routing (unit-tested) ---------------------------
     def _identity(self) -> Identity:
@@ -105,14 +112,33 @@ class ProxyServer:
             server=server_name,
             agent_id=idn.agent_id,
         )
+        self._metrics.record_call(gated.decision)
         if gated.is_error:
             raise PolicyBlocked(gated.error_text())
         route = self._routes.get(name)
         if route is None:
             raise PolicyBlocked(f"unknown tool {name!r}")
-        _up_name, up_tool, session = route
-        result = await session.call_tool(up_tool, gated.arguments)
+        up_name, up_tool, session = route
+        try:
+            result = await self._call_upstream(session, up_tool, gated.arguments)
+        except Exception:
+            # The upstream session may have dropped; reconnect once and retry so
+            # a transient upstream restart doesn't fail the agent's call.
+            self._metrics.record_upstream_error()
+            session = await self._reconnect(up_name)
+            result = await self._call_upstream(session, up_tool, gated.arguments)
         return list(result.content)
+
+    async def _call_upstream(self, session: Any, tool: str, arguments: dict[str, Any]) -> Any:
+        return await session.call_tool(tool, arguments)
+
+    async def _reconnect(self, name: str) -> Any:  # pragma: no cover - real transport
+        """Re-establish a dropped upstream and re-point its routes."""
+        session = await self._connect_upstream(self._upstream_cfg[name])
+        for namespaced, (up_name, up_tool, _old) in list(self._routes.items()):
+            if up_name == name:
+                self._routes[namespaced] = (up_name, up_tool, session)
+        return session
 
     # --- real transports (staging-validated) --------------------------------
     async def _connect_upstream(self, up: UpstreamConfig) -> Any:  # pragma: no cover
@@ -212,13 +238,28 @@ def build_asgi_app(config: ProxyConfig) -> Any:
     from praetor_mcp.auth import BearerAuthMiddleware
 
     proxy = ProxyServer(config)
-    manager = StreamableHTTPSessionManager(app=proxy.build_server())
+
+    # DNS-rebinding protection: restrict Host/Origin when configured.
+    security: Any = None
+    if config.listen_allowed_hosts or config.listen_allowed_origins:
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=config.listen_allowed_hosts,
+            allowed_origins=config.listen_allowed_origins,
+        )
+    manager = StreamableHTTPSessionManager(
+        app=proxy.build_server(), security_settings=security
+    )
 
     # The MCP endpoint, optionally behind bearer auth that also stamps the
     # per-request identity (agent from the token, session from the header).
     mcp_app: Any = manager.handle_request
     if config.listen_auth_tokens:
-        mcp_app = BearerAuthMiddleware(mcp_app, config.listen_auth_tokens)
+        mcp_app = BearerAuthMiddleware(
+            mcp_app, config.listen_auth_tokens, proxy.metrics
+        )
 
     async def _health(_req: Any) -> Any:
         return PlainTextResponse("ok")
@@ -227,6 +268,12 @@ def build_asgi_app(config: ProxyConfig) -> Any:
         # Ready once at least one upstream tool is routed (upstreams connected).
         code = 200 if proxy._routes else 503
         return PlainTextResponse("ready" if code == 200 else "starting", status_code=code)
+
+    async def _metrics(_req: Any) -> Any:
+        return PlainTextResponse(
+            proxy.metrics.render_prometheus(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
 
     @asynccontextmanager
     async def lifespan(_app: Any) -> Any:  # pragma: no cover - needs a running server
@@ -241,6 +288,7 @@ def build_asgi_app(config: ProxyConfig) -> Any:
         routes=[
             Route("/healthz", _health),
             Route("/readyz", _ready),
+            Route("/metrics", _metrics),
             Mount(config.listen_path, app=mcp_app),
         ],
         lifespan=lifespan,

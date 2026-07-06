@@ -60,8 +60,12 @@ For a shared HTTP gateway (many agents → one proxy):
   tokens the proxy runs single-identity (fine for the stdio sidecar).
 - **Config secrets** come from the environment: `${VAR}` in the YAML is expanded
   on load, so API keys / upstream tokens live in the process env, not on disk.
-- **Health probes:** `GET /healthz` (liveness) and `/readyz` (503 until
-  upstreams are connected) for k8s.
+- **Health + metrics:** `GET /healthz` (liveness), `/readyz` (503 until
+  upstreams connect), and `/metrics` (Prometheus: calls by decision, upstream
+  errors, auth rejections).
+- **DNS-rebinding protection:** set `listen.allowed_hosts` / `allowed_origins`
+  for a public endpoint. **Upstream resilience:** a dropped upstream is
+  reconnected and the call retried once.
 - **Graceful shutdown** flushes the audit shipper on the lifespan/exit path;
   mount a **persistent volume** for `audit_log_path` so locally-buffered events
   survive a restart.

@@ -57,6 +57,11 @@ class ProxyConfig:
     # agent_id. When set, unauthenticated requests are rejected and each call
     # is attributed to the token's agent. Empty = no auth (stdio sidecar / dev).
     listen_auth_tokens: dict[str, str] = field(default_factory=dict)
+    # DNS-rebinding protection for the HTTP listen: allowed Host / Origin
+    # values. When set, the MCP session manager rejects requests with other
+    # Host/Origin headers. Empty = protection off (localhost/dev).
+    listen_allowed_hosts: list[str] = field(default_factory=list)
+    listen_allowed_origins: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
         if not self.upstreams:
@@ -103,6 +108,8 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
         listen_bind=listen.get("bind", "127.0.0.1:8090"),
         listen_path=listen.get("path", "/mcp"),
         listen_auth_tokens=dict(listen.get("auth_tokens", {})),
+        listen_allowed_hosts=list(listen.get("allowed_hosts", [])),
+        listen_allowed_origins=list(listen.get("allowed_origins", [])),
     )
     config.validate()
     return config

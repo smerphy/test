@@ -17,6 +17,7 @@ from praetor_mcp.config import (
 )
 from praetor_mcp.gate import GateResult, PolicyGate
 from praetor_mcp.identity import Identity, current_identity, set_identity
+from praetor_mcp.metrics import ProxyMetrics
 
 __all__ = [
     "EnforcementConfig",
@@ -24,6 +25,7 @@ __all__ = [
     "Identity",
     "PolicyGate",
     "ProxyConfig",
+    "ProxyMetrics",
     "UpstreamConfig",
     "build_client",
     "current_identity",
