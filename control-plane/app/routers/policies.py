@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 # We import the engine parser to validate YAML on the way in.
@@ -22,6 +24,7 @@ from app.models import (
     RolloutState,
 )
 from app.schemas import (
+    PolicyBacktestIn,
     PolicyBundleIn,
     PolicyBundleOut,
     PolicyRolloutIn,
@@ -32,6 +35,8 @@ from app.schemas import (
     ProjectIn,
     ProjectOut,
 )
+from app.services.access_log import access_log
+from app.services.backtest import backtest_policy
 
 router = APIRouter(tags=["policies"])
 
@@ -229,3 +234,29 @@ def create_rollout(
     session.add(rollout)
     session.flush()
     return rollout
+
+
+@router.post("/policies/backtest")
+def backtest(
+    body: PolicyBacktestIn,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+    _al: None = Depends(access_log("audit", "backtest")),
+) -> dict[str, Any]:
+    """Replay recorded audit events through a candidate policy bundle and diff
+    the decisions (what would this policy have done?). Read-only."""
+    try:
+        return backtest_policy(
+            session,
+            org.id,
+            yaml_text=body.yaml_text,
+            since=body.since,
+            until=body.until,
+            limit=body.limit,
+        )
+    except PolicyParseError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"invalid policy bundle: {exc}",
+        ) from exc

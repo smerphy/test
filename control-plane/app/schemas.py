@@ -142,6 +142,15 @@ class PolicyVersionIn(BaseModel):
     author_email: str | None = None
 
 
+class PolicyBacktestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Same size cap as a policy version (bounds parser CPU/memory).
+    yaml_text: str = Field(..., min_length=1, max_length=256 * 1024)
+    since: datetime | None = None
+    until: datetime | None = None
+    limit: int = Field(default=10_000, ge=1, le=100_000)
+
+
 class PolicyVersionOut(BaseModel):
     model_config = _BASE
     id: str
