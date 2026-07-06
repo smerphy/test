@@ -61,6 +61,14 @@ celery_app.conf.beat_schedule = {
         "task": "praetor.log.consume",
         "schedule": 10.0,  # drain the event log into hot + analytics stores
     },
+    "ueba-rebuild-baselines": {
+        "task": "praetor.ueba.rebuild_baselines",
+        "schedule": 86400.0,  # daily behavioral-baseline refresh
+    },
+    "ueba-detect-drift": {
+        "task": "praetor.ueba.detect_drift",
+        "schedule": 300.0,  # behavioral drift -> findings
+    },
     "ai-sweep-findings": {
         "task": "praetor.ai.sweep_findings",
         "schedule": 3600.0,  # hourly proactive hunt (AI-enabled orgs only)

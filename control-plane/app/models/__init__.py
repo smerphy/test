@@ -1,5 +1,6 @@
 from app.models.access_log import AccessLog
 from app.models.agent import Agent
+from app.models.agent_baseline import AgentBaseline
 from app.models.ai_usage import AIUsage
 from app.models.alert import (
     AlertAggregation,
@@ -57,6 +58,7 @@ __all__ = [
     "AIUsage",
     "AccessLog",
     "Agent",
+    "AgentBaseline",
     "AlertAggregation",
     "AlertChannel",
     "AlertComparison",

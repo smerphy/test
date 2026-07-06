@@ -142,6 +142,20 @@ class PolicyVersionIn(BaseModel):
     author_email: str | None = None
 
 
+class AgentBaselineOut(BaseModel):
+    model_config = _BASE
+    id: str
+    agent_id: str
+    window_start: datetime
+    window_end: datetime
+    event_count: int
+    tool_counts: dict[str, Any]
+    decision_counts: dict[str, Any]
+    distinct_tools: int
+    distinct_sessions: int
+    updated_at: datetime
+
+
 class PolicyBacktestIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # Same size cap as a policy version (bounds parser CPU/memory).

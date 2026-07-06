@@ -14,6 +14,7 @@ from app.routers import (
     alerts,
     approvals,
     audit,
+    baselines,
     connectors,
     detection_rules,
     finance,
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(threat_intel.router)
     app.include_router(telemetry.router)
     app.include_router(finance.router)
+    app.include_router(baselines.router)
     app.include_router(privacy.router)
     app.include_router(access_log.router)
     app.include_router(connectors.router)

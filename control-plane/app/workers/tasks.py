@@ -250,6 +250,32 @@ def apply_retention_task() -> dict[str, int]:
     return {"rolled": rolled, "pruned": pruned, "orgs": orgs}
 
 
+@celery_app.task(name="praetor.ueba.rebuild_baselines")
+def rebuild_baselines_task() -> dict[str, int]:
+    """Rebuild every org's per-agent behavioral baselines. Beat: daily."""
+    from app.services.baseline import rebuild_baselines
+
+    agents = 0
+    with SessionLocal() as session:
+        for org_id in session.execute(select(Organization.id)).scalars():
+            agents += rebuild_baselines(session, org_id)["agents"]
+            session.commit()
+    return {"agents": agents}
+
+
+@celery_app.task(name="praetor.ueba.detect_drift")
+def detect_drift_task() -> dict[str, int]:
+    """Detect behavioral drift across every org, raising findings. Beat."""
+    from app.services.baseline import detect_drift
+
+    findings = 0
+    with SessionLocal() as session:
+        for org in session.execute(select(Organization)).scalars():
+            findings += detect_drift(session, org)["findings"]
+            session.commit()
+    return {"findings": findings}
+
+
 @celery_app.task(name="praetor.audit.verify_chains")
 def verify_audit_chains_task() -> dict[str, int]:
     """Verify pending audit-chain linkage across every org (async-verify mode).
@@ -391,6 +417,7 @@ __all__ = [
     "apply_retention_task",
     "archive_audit_task",
     "consume_log_task",
+    "detect_drift_task",
     "dispatch_finding_task",
     "evaluate_all_alerts_task",
     "expire_stale_approvals_task",
@@ -398,6 +425,7 @@ __all__ = [
     "notify_approval_task",
     "process_audit_batch_task",
     "process_metric_batch_task",
+    "rebuild_baselines_task",
     "run_detections_task",
     "sync_threat_feeds_task",
     "verify_audit_chains_task",
