@@ -162,6 +162,7 @@ class JsonlAuditSink:
         *,
         on_event: Callable[[AuditEvent], None] | None = None,
         redact_pii: bool = False,
+        group_commit: int = 1,
     ) -> None:
         # Accept a plain string path too — the documented quickstart passes
         # one — so `JsonlAuditSink("audit.jsonl")` doesn't crash on the first
@@ -172,6 +173,14 @@ class JsonlAuditSink:
         # Mask PII in tool arguments / reason / context before the event is
         # hashed and shipped (tamper-evidence stays intact).
         self._redact_pii = redact_pii
+        # Group commit: fsync once per `group_commit` appends instead of every
+        # append. os.write still lands each event in the OS page cache
+        # immediately (durable against a process crash); only an OS/power loss
+        # in the window can lose the last <group_commit events. Default 1 keeps
+        # the original fsync-per-event durability. Higher values trade a small
+        # durability window for far fewer disk flushes on hot agents.
+        self._group_commit = max(1, group_commit)
+        self._since_fsync = 0
         # (agent_id, session_id) -> (last_seq, last_hash)
         self._chains: dict[tuple[str, str], tuple[int, str]] = self._scan_chains()
         # seq of the most recent record() on any chain (for observability).
@@ -234,12 +243,31 @@ class JsonlAuditSink:
         )
         try:
             os.write(fd, line.encode("utf-8"))
-            os.fsync(fd)
+            # Group commit: flush every `group_commit` writes. The write above
+            # is already in the page cache, so a flush isn't needed for
+            # process-crash durability — only to survive an OS/power loss.
+            self._since_fsync += 1
+            if self._since_fsync >= self._group_commit:
+                os.fsync(fd)
+                self._since_fsync = 0
         finally:
             os.close(fd)
 
+    def flush(self) -> None:
+        """Force any group-committed-but-unflushed appends to stable storage."""
+        with self._lock:
+            if self._since_fsync == 0 or not self._path.exists():
+                return
+            fd = os.open(self._path, os.O_WRONLY)
+            try:
+                os.fsync(fd)
+                self._since_fsync = 0
+            finally:
+                os.close(fd)
+
     def close(self) -> None:
-        return None
+        # Flush the group-commit tail so a clean shutdown never loses events.
+        self.flush()
 
 
 def verify_chain(path: Path) -> int:
@@ -328,12 +356,18 @@ class RemoteShipper:
         *,
         max_backoff_seconds: float = 30.0,
         poll_interval_seconds: float = 0.05,
+        batch_size: int = 100,
     ) -> None:
         self._sink = sink
         self._transport = transport
         self._offset_path = offset_path
         self._max_backoff = max_backoff_seconds
         self._poll = poll_interval_seconds
+        # Ship up to this many events per request. The control-plane endpoint
+        # accepts batches and is idempotent on (org, hash), so a batch that is
+        # retried after a lost ack is deduped server-side. One HTTP round-trip
+        # (+ TLS + auth + verify) now amortizes over many events.
+        self._batch_size = max(1, batch_size)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         # Offset is the number of events already acked, i.e. a position in the
@@ -373,20 +407,25 @@ class RemoteShipper:
             self._thread.join(timeout=timeout)
 
     def ship_pending(self) -> int:
-        """Synchronously ship every event past the offset. Returns count shipped."""
+        """Synchronously ship every event past the offset, in batches. Returns
+        the number of events shipped."""
+        pending = [
+            event
+            for index, event in enumerate(self._read_all_events())
+            if index >= self._acked_count
+        ]
         shipped = 0
-        for index, event in enumerate(self._read_all_events()):
-            if index < self._acked_count:
-                continue
-            if not self._ship_with_backoff(event):
-                # Shutting down before this event was acked. Do NOT advance
-                # the offset, or the event is dropped: on restart the backlog
-                # scan would begin after it. Leaving the offset put means it
-                # is re-shipped next run (at-least-once).
+        for start in range(0, len(pending), self._batch_size):
+            batch = pending[start : start + self._batch_size]
+            if not self._ship_batch_with_backoff(batch):
+                # Shutting down before this batch was acked. Do NOT advance the
+                # offset, or the batch is dropped: on restart the backlog scan
+                # would begin after it. Leaving the offset put means it is
+                # re-shipped next run (at-least-once; server dedups).
                 break
-            self._acked_count = index + 1
+            self._acked_count += len(batch)
             self._save_offset(self._acked_count)
-            shipped += 1
+            shipped += len(batch)
         return shipped
 
     def _run(self) -> None:  # pragma: no cover - exercised via integration tests
@@ -405,14 +444,26 @@ class RemoteShipper:
                     continue
                 yield AuditEvent.model_validate_json(stripped)
 
-    def _ship_with_backoff(self, event: AuditEvent) -> bool:
-        """Ship with exponential backoff. Returns True once acked, or False if
-        we were told to stop before delivery succeeded (caller must not
-        advance the offset in that case)."""
+    def _ship(self, batch: list[AuditEvent]) -> None:
+        """Ship a batch in one request when the transport supports it, else
+        fall back to one request per event (custom Transport implementations)."""
+        ship_batch = getattr(self._transport, "ship_batch", None)
+        if ship_batch is not None:
+            ship_batch(batch)
+        else:
+            for event in batch:
+                self._transport.ship(event)
+
+    def _ship_batch_with_backoff(self, batch: list[AuditEvent]) -> bool:
+        """Ship a batch with exponential backoff. Returns True once acked, or
+        False if we were told to stop before delivery succeeded (caller must
+        not advance the offset in that case)."""
+        if not batch:
+            return True
         backoff = self._poll
         while not self._stop.is_set():
             try:
-                self._transport.ship(event)
+                self._ship(batch)
                 return True
             except Exception:
                 time.sleep(min(backoff, self._max_backoff))

@@ -52,6 +52,8 @@ class PraetorClient:
         default_agent_id: str | None = None,
         enable_quarantine: bool = True,
         redact_pii: bool = False,
+        audit_group_commit: int = 1,
+        ship_batch_size: int = 100,
     ) -> None:
         if policies is not None and bundle_path is not None:
             raise ValueError("pass policies or bundle_path, not both")
@@ -70,7 +72,11 @@ class PraetorClient:
         elif audit_log_path is not None:
             # Redact PII pre-hash so tamper-evidence still holds. Callers who
             # pass their own audit_sink control redaction on that sink.
-            self._audit = JsonlAuditSink(audit_log_path, redact_pii=redact_pii)
+            self._audit = JsonlAuditSink(
+                audit_log_path,
+                redact_pii=redact_pii,
+                group_commit=audit_group_commit,
+            )
         else:
             self._audit = NullAuditSink()
 
@@ -108,7 +114,9 @@ class PraetorClient:
                 control_plane_url, api_key=api_key, org_slug=org_slug
             )
             offset = self._audit.path.with_suffix(self._audit.path.suffix + ".offset")
-            self._shipper = RemoteShipper(self._audit, transport, offset_path=offset)
+            self._shipper = RemoteShipper(
+                self._audit, transport, offset_path=offset, batch_size=ship_batch_size
+            )
             self._shipper.start()
 
         # Fleet enrollment: register this sensor with the control plane.
@@ -192,9 +200,11 @@ class PraetorClient:
         return self._shipper
 
     def stop(self) -> None:
-        """Stop background workers (audit shipper). Safe to call repeatedly."""
+        """Stop background workers (audit shipper) and flush the audit sink's
+        group-commit tail. Safe to call repeatedly."""
         if self._shipper is not None:
             self._shipper.stop()
+        self._audit.close()
 
     @property
     def policies(self) -> tuple[Policy, ...]:
