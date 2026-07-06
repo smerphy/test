@@ -37,5 +37,5 @@ jobs:
       - name: Mypy (strict)
         run: uv run mypy praetor_mcp
 
-      - name: Pytest with coverage gate (>=85%)
-        run: uv run pytest --cov=praetor_mcp --cov-report=term-missing --cov-fail-under=85
+      - name: Pytest with coverage gate (>=90%)
+        run: uv run pytest --cov=praetor_mcp --cov-report=term-missing --cov-fail-under=90

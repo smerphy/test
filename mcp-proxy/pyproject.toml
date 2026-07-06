@@ -17,9 +17,13 @@ runtime = ["mcp>=1.2"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23",
     "mypy>=1.10",
     "ruff>=0.6",
     "types-PyYAML",
+    # The MCP runtime, so the transport adapter (server.py) is exercised in CI
+    # against an in-memory mock upstream — not just validated in staging.
+    "mcp>=1.2",
 ]
 
 [project.scripts]
@@ -38,6 +42,7 @@ packages = ["praetor_mcp"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["praetor_mcp"]
