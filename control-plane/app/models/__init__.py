@@ -15,6 +15,7 @@ from app.models.alert import (
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.audit import AuditEvent
 from app.models.audit_anchor import AuditAnchor
+from app.models.break_glass import BreakGlassGrant
 from app.models.connector import ConnectorType, NotificationConnector
 from app.models.detection_rule import DetectionRule
 from app.models.event_log import LogOffset, LogRecord
@@ -72,6 +73,7 @@ __all__ = [
     "AuditAnchor",
     "AuditDailyRollup",
     "AuditEvent",
+    "BreakGlassGrant",
     "ComplianceReport",
     "ConnectorType",
     "DetectionRule",

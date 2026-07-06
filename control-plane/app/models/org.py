@@ -60,6 +60,12 @@ class Organization(IdMixin, TimestampMixin, Base):
     pii_redaction_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    # Global kill-switch (EDR): when engaged, every agent/session is treated as
+    # quarantined (denied inline via /quarantines/check) except those with an
+    # active break-glass grant. Owner-controlled emergency stop.
+    halt_all: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     # --- AI-native advisory (opt-in, bring-your-own-key, vendor-neutral) ---
     # Off by default: the deterministic policy engine is fully functional

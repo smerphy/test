@@ -86,6 +86,14 @@ def check(
     agent_id: Annotated[str | None, Query()] = None,
     session_id: Annotated[str | None, Query()] = None,
 ) -> QuarantineCheckOut:
+    # Global kill-switch: a halted agent (without a break-glass exception) is
+    # isolated before any per-entity quarantine is even considered.
+    from app.services.killswitch import is_agent_halted
+
+    if is_agent_halted(session, org, agent_id=agent_id):
+        return QuarantineCheckOut(
+            quarantined=True, reason="organization halted (kill-switch)"
+        )
     q = match_quarantine(
         session, org.id, agent_id=agent_id, session_id=session_id
     )

@@ -142,6 +142,29 @@ class PolicyVersionIn(BaseModel):
     author_email: str | None = None
 
 
+class BreakGlassIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(..., min_length=1, max_length=255)
+    reason: str = Field(..., min_length=1, max_length=2000)
+    minutes: int = Field(default=60, ge=1, le=1440)
+    granted_by: str | None = Field(default=None, max_length=255)
+
+
+class BreakGlassOut(BaseModel):
+    model_config = _BASE
+    id: str
+    agent_id: str
+    reason: str
+    granted_by: str | None = None
+    expires_at: datetime
+    created_at: datetime
+
+
+class KillSwitchOut(BaseModel):
+    halt_all: bool
+    active_break_glass: list[BreakGlassOut] = Field(default_factory=list)
+
+
 class AgentBaselineOut(BaseModel):
     model_config = _BASE
     id: str
