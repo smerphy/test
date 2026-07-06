@@ -112,7 +112,7 @@ policies:
     when:
       op: matches
       path: tool.arguments.url
-      pattern: '(?:169\.254\.169\.254|metadata\.google\.internal|metadata\.aws\.amazon\.com)'
+      pattern: '(?i)(?:169\.254\.169\.254|metadata\.google\.internal|metadata\.aws\.amazon\.com)'
     reason: cloud metadata endpoint access from an agent is treated as SSRF
     metadata:
       nist_ai_rmf: MANAGE-2.1
@@ -135,7 +135,7 @@ policies:
     when:
       op: matches
       path: tool.arguments.url
-      pattern: '://(?:localhost|127\.0\.0\.1|\[::1\])'
+      pattern: '(?i)://(?:localhost|127\.0\.0\.1|\[::1\])'
     reason: agents must not reach localhost (likely SSRF or misconfiguration)
     metadata:
       nist_ai_rmf: GOVERN-1.2
@@ -145,7 +145,7 @@ policies:
     when:
       op: matches
       path: tool.arguments.url
-      pattern: '://(?:169\.254\.|\[fe80:)'
+      pattern: '(?i)://(?:169\.254\.|\[fe80:)'
     reason: agents must not reach link-local addresses
     metadata:
       nist_ai_rmf: GOVERN-1.2
@@ -155,7 +155,7 @@ policies:
     when:
       op: matches
       path: tool.arguments.url
-      pattern: '^(?:file|gopher|ftp|jar|dict|sftp):'
+      pattern: '(?i)^(?:file|gopher|ftp|jar|dict|sftp):'
     reason: only http/https schemes are permitted for outbound tool calls
     metadata:
       nist_ai_rmf: MANAGE-2.1
@@ -436,7 +436,7 @@ policies:
     when:
       op: matches
       path: tool.arguments.url
-      pattern: '(?:discord\.com/api/webhooks/|hooks\.slack\.com/services/|api\.telegram\.org/bot|webhook\.site/)'
+      pattern: '(?i)(?:discord\.com/api/webhooks/|hooks\.slack\.com/services/|api\.telegram\.org/bot|webhook\.site/)'
     reason: outbound to a known webhook receiver — likely exfil channel
     metadata:
       nist_ai_rmf: MEASURE-2.7
@@ -447,7 +447,7 @@ policies:
     when:
       op: matches
       path: tool.arguments.url
-      pattern: '(?:pastebin\.com|paste\.bin|hastebin\.com|ghostbin\.com|transfer\.sh|file\.io|anonfiles\.com|tmpfiles\.org|0x0\.st|controlc\.com|paste\.ee|rentry\.co)'
+      pattern: '(?i)(?:pastebin\.com|paste\.bin|hastebin\.com|ghostbin\.com|transfer\.sh|file\.io|anonfiles\.com|tmpfiles\.org|0x0\.st|controlc\.com|paste\.ee|rentry\.co)'
     reason: outbound to a public paste / file-share service — exfil risk
     metadata:
       nist_ai_rmf: MEASURE-2.7
@@ -458,7 +458,7 @@ policies:
     when:
       op: matches
       path: tool.arguments.url
-      pattern: '\.onion(?:[/:]|$)'
+      pattern: '(?i)\.onion(?:[/:]|$)'
     reason: agents must not reach .onion addresses
     metadata:
       nist_ai_rmf: GOVERN-1.2

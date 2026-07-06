@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 # We import the engine parser to validate YAML on the way in.
@@ -9,17 +11,20 @@ from praetor_engine.parser import PolicyParseError, parse_bundle
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
+from app.deps import get_owned
 from app.models import (
     Organization,
     PolicyBundle,
     PolicyRollout,
     PolicyVersion,
     Project,
+    Role,
     RolloutState,
 )
 from app.schemas import (
+    PolicyBacktestIn,
     PolicyBundleIn,
     PolicyBundleOut,
     PolicyRolloutIn,
@@ -30,6 +35,8 @@ from app.schemas import (
     ProjectIn,
     ProjectOut,
 )
+from app.services.access_log import access_log
+from app.services.backtest import backtest_policy
 
 router = APIRouter(tags=["policies"])
 
@@ -53,6 +60,7 @@ def create_project(
     body: ProjectIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> Project:
     project = Project(organization_id=org.id, name=body.name, slug=body.slug)
     session.add(project)
@@ -79,10 +87,9 @@ def create_bundle(
     body: PolicyBundleIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> PolicyBundleOut:
-    project = session.get(Project, project_id)
-    if project is None or project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="project not found")
+    project = get_owned(session, Project, project_id, org, detail="project not found")
     bundle = PolicyBundle(
         project_id=project.id, name=body.name, description=body.description
     )
@@ -99,9 +106,7 @@ def list_bundles(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> list[PolicyBundleOut]:
-    project = session.get(Project, project_id)
-    if project is None or project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="project not found")
+    project = get_owned(session, Project, project_id, org, detail="project not found")
     return [_bundle_out(b) for b in project.bundles]
 
 
@@ -115,10 +120,16 @@ def create_version(
     body: PolicyVersionIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> PolicyVersion:
-    bundle = session.get(PolicyBundle, bundle_id)
-    if bundle is None or bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="bundle not found")
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
 
     try:
         policies = parse_bundle(body.yaml_text)
@@ -154,9 +165,14 @@ def list_versions(
 ) -> list[PolicyVersion]:
     """List versions of a bundle. Omits `yaml_text` for payload sanity;
     fetch one version's full text via `GET /versions/{version_id}`."""
-    bundle = session.get(PolicyBundle, bundle_id)
-    if bundle is None or bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="bundle not found")
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
     return list(bundle.versions)
 
 
@@ -166,9 +182,14 @@ def get_version(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> PolicyVersion:
-    version = session.get(PolicyVersion, version_id)
-    if version is None or version.bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="version not found")
+    version = get_owned(
+        session,
+        PolicyVersion,
+        version_id,
+        org,
+        owner=lambda v: v.bundle.project.organization_id,
+        detail="version not found",
+    )
     return version
 
 
@@ -182,10 +203,16 @@ def create_rollout(
     body: PolicyRolloutIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> PolicyRollout:
-    bundle = session.get(PolicyBundle, bundle_id)
-    if bundle is None or bundle.project.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="bundle not found")
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
     version = session.get(PolicyVersion, body.version_id)
     if version is None or version.bundle_id != bundle.id:
         raise HTTPException(
@@ -207,3 +234,29 @@ def create_rollout(
     session.add(rollout)
     session.flush()
     return rollout
+
+
+@router.post("/policies/backtest")
+def backtest(
+    body: PolicyBacktestIn,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+    _al: None = Depends(access_log("audit", "backtest")),
+) -> dict[str, Any]:
+    """Replay recorded audit events through a candidate policy bundle and diff
+    the decisions (what would this policy have done?). Read-only."""
+    try:
+        return backtest_policy(
+            session,
+            org.id,
+            yaml_text=body.yaml_text,
+            since=body.since,
+            until=body.until,
+            limit=body.limit,
+        )
+    except PolicyParseError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"invalid policy bundle: {exc}",
+        ) from exc

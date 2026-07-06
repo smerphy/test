@@ -9,29 +9,22 @@ data.
 
 from __future__ import annotations
 
-import hashlib
-import json
-
+from praetor_engine.audit_hash import GENESIS_HASH, compute_hash
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import AuditEvent
 from app.schemas import AuditEventIn
-
-GENESIS_HASH = "0" * 64
-
-
-def _canonical_hash(payload: dict[str, object]) -> str:
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+from app.services.pii import CLASS_STANDARD, classify_payload
+from app.settings import get_settings
 
 
 def _verify_hash(event: AuditEventIn) -> None:
-    # Use the same wire-bytes path as the SDK's verify_chain so that
-    # any conformant writer's events ingest cleanly.
+    # Use the same canonicalization as the SDK writer (shared via
+    # praetor_engine.audit_hash) so any conformant writer's events verify.
     body = event.model_dump(mode="json", exclude={"hash"})
-    expected = _canonical_hash(body)
+    expected = compute_hash(body)
     if expected != event.hash:
         raise ValueError(
             f"hash mismatch (computed {expected}, stored {event.hash})"
@@ -74,27 +67,43 @@ def ingest_event(
     if existing is not None:
         return existing
 
-    latest = _latest_event(
-        session,
-        org_id=org_id,
-        agent_id=event.agent_id,
-        session_id=event.session_id,
-    )
-    if latest is None:
-        expected_prev = GENESIS_HASH
-        expected_seq = 0
-    else:
-        expected_prev = latest.hash
-        expected_seq = latest.seq + 1
-
-    if event.prev_hash != expected_prev:
-        raise ValueError(
-            f"prev_hash mismatch for (agent={event.agent_id}, "
-            f"session={event.session_id}): expected {expected_prev}, got {event.prev_hash}"
+    # Chain-linkage verification. Synchronously (default) we read the chain tip
+    # and reject a broken prev_hash/seq at ingest. Under async-verify we skip
+    # the tip read entirely (removing the read-then-write contention from the
+    # hot path) and insert the event `unverified` for the background verifier.
+    async_verify = get_settings().audit_async_verify
+    if not async_verify:
+        latest = _latest_event(
+            session,
+            org_id=org_id,
+            agent_id=event.agent_id,
+            session_id=event.session_id,
         )
-    if event.seq != expected_seq:
-        raise ValueError(
-            f"seq mismatch: expected {expected_seq}, got {event.seq}"
+        if latest is None:
+            expected_prev = GENESIS_HASH
+            expected_seq = 0
+        else:
+            expected_prev = latest.hash
+            expected_seq = latest.seq + 1
+
+        if event.prev_hash != expected_prev:
+            raise ValueError(
+                f"prev_hash mismatch for (agent={event.agent_id}, "
+                f"session={event.session_id}): expected {expected_prev}, "
+                f"got {event.prev_hash}"
+            )
+        if event.seq != expected_seq:
+            raise ValueError(
+                f"seq mismatch: expected {expected_seq}, got {event.seq}"
+            )
+
+    # Server-side data classification (opt-in) drives classification-aware
+    # retention. Derived from a PII scan of the payload — never trusted from
+    # the client and not part of the hashed body.
+    classification = CLASS_STANDARD
+    if get_settings().classify_telemetry:
+        classification = classify_payload(
+            event.tool_arguments, event.context, event.reason
         )
 
     row = AuditEvent(
@@ -112,11 +121,26 @@ def ingest_event(
         suggested_transform=event.suggested_transform,
         context=event.context,
         evaluator_version=event.evaluator_version,
+        classification=classification,
+        verified=not async_verify,
         prev_hash=event.prev_hash,
         hash=event.hash,
     )
+    # The idempotency pre-check above has a TOCTOU gap: a concurrent request
+    # shipping the same event can insert it between our _by_hash lookup and
+    # this flush, so the flush loses the race on the uq_audit_org_hash unique
+    # constraint. Contain the failure in a savepoint and return the winner's
+    # row instead of letting the IntegrityError escape as a 500 (which would
+    # make an at-least-once shipper retry the duplicate forever).
     session.add(row)
-    session.flush()
+    try:
+        with session.begin_nested():
+            session.flush()
+    except IntegrityError:
+        existing = _by_hash(session, org_id=org_id, hash_=event.hash)
+        if existing is not None:
+            return existing
+        raise
     return row
 
 

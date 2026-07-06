@@ -14,7 +14,6 @@ only on ack. Network failures back off but never drop events.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
 import threading
@@ -22,29 +21,21 @@ import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Protocol
 
 from praetor_engine import __version__ as _ENGINE_VERSION
+from praetor_engine.audit_hash import (
+    GENESIS_HASH,
+    compute_hash,
+)
+from praetor_engine.audit_hash import (
+    canonical_timestamp as _canonical_timestamp,
+)
+from praetor_engine.redaction import redact_text, redact_value
 from praetor_engine.types import Decision, DecisionResult, PolicyInput
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer
 
 from praetor.errors import AuditError
-
-GENESIS_HASH: Final[str] = "0" * 64
-"""SHA-256 placeholder used as the prev_hash of the first event in a log."""
-
-
-def _canonical_timestamp(value: datetime) -> str:
-    """Canonical wire format: `YYYY-MM-DDTHH:MM:SS.sssZ` (ms precision, Z suffix).
-
-    Matches `Date.prototype.toISOString()` in JavaScript so audit chains
-    are cross-language verifiable.
-    """
-    if value.tzinfo is None:
-        raise ValueError("timestamp must be timezone-aware")
-    aware = value.astimezone(UTC)
-    ms = aware.microsecond // 1000
-    return f"{aware.strftime('%Y-%m-%dT%H:%M:%S')}.{ms:03d}Z"
 
 
 class AuditEvent(BaseModel):
@@ -73,21 +64,12 @@ class AuditEvent(BaseModel):
         return _canonical_timestamp(value)
 
 
-def _canonical_bytes_for_hashing(event_minus_hash: dict[str, Any]) -> bytes:
-    """Canonical JSON bytes: sorted keys, no whitespace, UTF-8.
-
-    Same algorithm in both Python and TS SDKs. Hashing over this shape
-    rather than over the in-memory model means cross-language chain
-    verification works as long as both writers use the same canonical
-    timestamp / scalar serialization.
-    """
-    return json.dumps(
-        event_minus_hash, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-
-
-def _compute_hash(event_dict_minus_hash: dict[str, Any]) -> str:
-    return hashlib.sha256(_canonical_bytes_for_hashing(event_dict_minus_hash)).hexdigest()
+# Canonicalization + hashing are shared with the control plane and mirrored
+# by the TS SDK via praetor_engine.audit_hash, so every party recomputes the
+# same bytes. (One residual cross-language gap: integral floats — Python 1.0
+# vs JS 1 — since JS has no int/float distinction; avoid float-valued tool
+# arguments in chains that must verify across languages.)
+_compute_hash = compute_hash
 
 
 class AuditSink(Protocol):
@@ -117,9 +99,6 @@ class NullAuditSink:
         return None
 
 
-_HASH_PLACEHOLDER = "0" * 64
-
-
 def _build_event(
     *,
     seq: int,
@@ -127,8 +106,19 @@ def _build_event(
     policy_input: PolicyInput,
     decision: DecisionResult,
     now: datetime | None = None,
+    redact_pii: bool = False,
 ) -> AuditEvent:
     timestamp = now or datetime.now(UTC)
+    # Redact PII BEFORE hashing so the tamper-evident chain covers the redacted
+    # values (server-side redaction would break verification). The policy
+    # decision was already made on the original arguments.
+    tool_arguments: Any = policy_input.tool.arguments
+    reason = decision.reason
+    context: Any = policy_input.context
+    if redact_pii:
+        tool_arguments, _ = redact_value(dict(policy_input.tool.arguments))
+        reason, _ = redact_text(decision.reason)
+        context, _ = redact_value(dict(policy_input.context))
     # Build the body as a plain dict with canonical wire-format values.
     # Hashing over this dict directly (rather than re-serializing a
     # Pydantic model) keeps the hash language-agnostic: any writer that
@@ -139,13 +129,13 @@ def _build_event(
         "agent_id": policy_input.agent.id,
         "session_id": policy_input.session.id,
         "tool_name": policy_input.tool.name,
-        "tool_arguments": policy_input.tool.arguments,
+        "tool_arguments": tool_arguments,
         "tool_use_id": policy_input.tool.tool_use_id,
         "decision": decision.decision.value,
-        "reason": decision.reason,
+        "reason": reason,
         "matched_policy_id": decision.matched_policy_id,
         "suggested_transform": decision.suggested_transform,
-        "context": policy_input.context,
+        "context": context,
         "evaluator_version": _ENGINE_VERSION,
         "prev_hash": prev_hash,
     }
@@ -154,22 +144,47 @@ def _build_event(
 
 
 class JsonlAuditSink:
-    """Append-only JSONL with Merkle chain. Thread-safe, fsync-on-append.
+    """Append-only JSONL with a per-(agent, session) Merkle chain.
+    Thread-safe, fsync-on-append.
 
-    Resumes from the on-disk tail on construction, so the chain continues
-    across process restarts.
+    Each (agent_id, session_id) is an independent chain whose seq starts at
+    0 and whose first event links to `GENESIS_HASH`. This matches the
+    control plane's ingestion contract, which verifies and orders events
+    per (organization, agent, session) — a single file-global chain would
+    make every session after the first fail ingest with a seq/prev_hash
+    mismatch. Chain tips are reconstructed from the on-disk log on
+    construction, so chains continue across process restarts.
     """
 
     def __init__(
         self,
-        path: Path,
+        path: Path | str,
         *,
         on_event: Callable[[AuditEvent], None] | None = None,
+        redact_pii: bool = False,
+        group_commit: int = 1,
     ) -> None:
-        self._path = path
+        # Accept a plain string path too — the documented quickstart passes
+        # one — so `JsonlAuditSink("audit.jsonl")` doesn't crash on the first
+        # `.exists()`/`.stat()` call.
+        self._path = Path(path)
         self._lock = threading.Lock()
         self._on_event = on_event
-        self._seq, self._prev_hash = self._scan_tail()
+        # Mask PII in tool arguments / reason / context before the event is
+        # hashed and shipped (tamper-evidence stays intact).
+        self._redact_pii = redact_pii
+        # Group commit: fsync once per `group_commit` appends instead of every
+        # append. os.write still lands each event in the OS page cache
+        # immediately (durable against a process crash); only an OS/power loss
+        # in the window can lose the last <group_commit events. Default 1 keeps
+        # the original fsync-per-event durability. Higher values trade a small
+        # durability window for far fewer disk flushes on hot agents.
+        self._group_commit = max(1, group_commit)
+        self._since_fsync = 0
+        # (agent_id, session_id) -> (last_seq, last_hash)
+        self._chains: dict[tuple[str, str], tuple[int, str]] = self._scan_chains()
+        # seq of the most recent record() on any chain (for observability).
+        self._last_seq = -1
 
     @property
     def path(self) -> Path:
@@ -177,39 +192,42 @@ class JsonlAuditSink:
 
     @property
     def current_seq(self) -> int:
-        return self._seq
+        """Seq assigned to the most recently recorded event (any chain)."""
+        return self._last_seq
 
-    def _scan_tail(self) -> tuple[int, str]:
+    def _scan_chains(self) -> dict[tuple[str, str], tuple[int, str]]:
+        chains: dict[tuple[str, str], tuple[int, str]] = {}
         if not self._path.exists() or self._path.stat().st_size == 0:
-            return (-1, GENESIS_HASH)
-        last_line = ""
+            return chains
         with open(self._path, "rb") as f:
             for raw in f:
                 line = raw.decode("utf-8").rstrip("\n")
-                if line:
-                    last_line = line
-        if not last_line:
-            return (-1, GENESIS_HASH)
-        try:
-            event = AuditEvent.model_validate_json(last_line)
-        except Exception as exc:
-            raise AuditError(f"corrupt audit log tail: {exc}") from exc
-        return (event.seq, event.hash)
+                if not line:
+                    continue
+                try:
+                    event = AuditEvent.model_validate_json(line)
+                except Exception as exc:
+                    raise AuditError(f"corrupt audit log: {exc}") from exc
+                chains[(event.agent_id, event.session_id)] = (event.seq, event.hash)
+        return chains
 
     def record(
         self, policy_input: PolicyInput, decision: DecisionResult
     ) -> AuditEvent:
         with self._lock:
-            next_seq = self._seq + 1
+            key = (policy_input.agent.id, policy_input.session.id)
+            last_seq, prev_hash = self._chains.get(key, (-1, GENESIS_HASH))
+            next_seq = last_seq + 1
             event = _build_event(
                 seq=next_seq,
-                prev_hash=self._prev_hash,
+                prev_hash=prev_hash,
                 policy_input=policy_input,
                 decision=decision,
+                redact_pii=self._redact_pii,
             )
             self._append(event)
-            self._seq = next_seq
-            self._prev_hash = event.hash
+            self._chains[key] = (next_seq, event.hash)
+            self._last_seq = next_seq
             if self._on_event is not None:
                 with contextlib.suppress(Exception):
                     self._on_event(event)
@@ -225,12 +243,31 @@ class JsonlAuditSink:
         )
         try:
             os.write(fd, line.encode("utf-8"))
-            os.fsync(fd)
+            # Group commit: flush every `group_commit` writes. The write above
+            # is already in the page cache, so a flush isn't needed for
+            # process-crash durability — only to survive an OS/power loss.
+            self._since_fsync += 1
+            if self._since_fsync >= self._group_commit:
+                os.fsync(fd)
+                self._since_fsync = 0
         finally:
             os.close(fd)
 
+    def flush(self) -> None:
+        """Force any group-committed-but-unflushed appends to stable storage."""
+        with self._lock:
+            if self._since_fsync == 0 or not self._path.exists():
+                return
+            fd = os.open(self._path, os.O_WRONLY)
+            try:
+                os.fsync(fd)
+                self._since_fsync = 0
+            finally:
+                os.close(fd)
+
     def close(self) -> None:
-        return None
+        # Flush the group-commit tail so a clean shutdown never loses events.
+        self.flush()
 
 
 def verify_chain(path: Path) -> int:
@@ -244,7 +281,11 @@ def verify_chain(path: Path) -> int:
     recomputed-hash mismatch, or invalid shape).
     """
     count = 0
-    expected_prev = GENESIS_HASH
+    # Independent chain state per (agent_id, session_id): the expected
+    # prev_hash and the expected next seq. Events for different sessions are
+    # interleaved in the file, so each is verified against its own tip.
+    expected_prev: dict[tuple[str, str], str] = {}
+    expected_seq: dict[tuple[str, str], int] = {}
     if not path.exists():
         return 0
     with open(path) as f:
@@ -266,10 +307,18 @@ def verify_chain(path: Path) -> int:
             except Exception as exc:
                 raise AuditError(f"line {line_no}: invalid event shape: {exc}") from exc
 
-            if raw_dict["prev_hash"] != expected_prev:
+            key = (raw_dict["agent_id"], raw_dict["session_id"])
+            prev_for_key = expected_prev.get(key, GENESIS_HASH)
+            if raw_dict["prev_hash"] != prev_for_key:
                 raise AuditError(
                     f"line {line_no}: prev_hash mismatch "
-                    f"(expected {expected_prev}, got {raw_dict['prev_hash']})"
+                    f"(expected {prev_for_key}, got {raw_dict['prev_hash']})"
+                )
+            seq_for_key = expected_seq.get(key, 0)
+            if raw_dict["seq"] != seq_for_key:
+                raise AuditError(
+                    f"line {line_no}: seq mismatch "
+                    f"(expected {seq_for_key}, got {raw_dict['seq']})"
                 )
             body = {k: v for k, v in raw_dict.items() if k != "hash"}
             recomputed = _compute_hash(body)
@@ -278,7 +327,8 @@ def verify_chain(path: Path) -> int:
                     f"line {line_no}: hash mismatch "
                     f"(recomputed {recomputed}, stored {stored_hash})"
                 )
-            expected_prev = stored_hash
+            expected_prev[key] = stored_hash
+            expected_seq[key] = seq_for_key + 1
             count += 1
     return count
 
@@ -306,30 +356,40 @@ class RemoteShipper:
         *,
         max_backoff_seconds: float = 30.0,
         poll_interval_seconds: float = 0.05,
+        batch_size: int = 100,
     ) -> None:
         self._sink = sink
         self._transport = transport
         self._offset_path = offset_path
         self._max_backoff = max_backoff_seconds
         self._poll = poll_interval_seconds
+        # Ship up to this many events per request. The control-plane endpoint
+        # accepts batches and is idempotent on (org, hash), so a batch that is
+        # retried after a lost ack is deduped server-side. One HTTP round-trip
+        # (+ TLS + auth + verify) now amortizes over many events.
+        self._batch_size = max(1, batch_size)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_acked_seq = self._load_offset()
+        # Offset is the number of events already acked, i.e. a position in the
+        # append-ordered file — NOT a seq. With per-(agent, session) chains the
+        # seq restarts at 0 for each session, so it is not globally monotonic
+        # and cannot be used to track shipping progress across the whole file.
+        self._acked_count = self._load_offset()
 
     @property
-    def last_acked_seq(self) -> int:
-        return self._last_acked_seq
+    def acked_count(self) -> int:
+        return self._acked_count
 
     def _load_offset(self) -> int:
         if not self._offset_path.exists():
-            return -1
+            return 0
         text = self._offset_path.read_text().strip()
-        return int(text) if text else -1
+        return int(text) if text else 0
 
-    def _save_offset(self, seq: int) -> None:
+    def _save_offset(self, count: int) -> None:
         # Write+rename for atomic offset update.
         tmp = self._offset_path.with_suffix(self._offset_path.suffix + ".tmp")
-        tmp.write_text(str(seq))
+        tmp.write_text(str(count))
         os.replace(tmp, self._offset_path)
 
     def start(self) -> None:
@@ -347,13 +407,25 @@ class RemoteShipper:
             self._thread.join(timeout=timeout)
 
     def ship_pending(self) -> int:
-        """Synchronously ship every event newer than the offset. Returns count shipped."""
+        """Synchronously ship every event past the offset, in batches. Returns
+        the number of events shipped."""
+        pending = [
+            event
+            for index, event in enumerate(self._read_all_events())
+            if index >= self._acked_count
+        ]
         shipped = 0
-        for event in self._read_events_after(self._last_acked_seq):
-            self._ship_with_backoff(event)
-            self._last_acked_seq = event.seq
-            self._save_offset(event.seq)
-            shipped += 1
+        for start in range(0, len(pending), self._batch_size):
+            batch = pending[start : start + self._batch_size]
+            if not self._ship_batch_with_backoff(batch):
+                # Shutting down before this batch was acked. Do NOT advance the
+                # offset, or the batch is dropped: on restart the backlog scan
+                # would begin after it. Leaving the offset put means it is
+                # re-shipped next run (at-least-once; server dedups).
+                break
+            self._acked_count += len(batch)
+            self._save_offset(self._acked_count)
+            shipped += len(batch)
         return shipped
 
     def _run(self) -> None:  # pragma: no cover - exercised via integration tests
@@ -362,7 +434,7 @@ class RemoteShipper:
                 self.ship_pending()
             self._stop.wait(self._poll)
 
-    def _read_events_after(self, seq: int) -> Iterator[AuditEvent]:
+    def _read_all_events(self) -> Iterator[AuditEvent]:
         if not self._sink.path.exists():
             return
         with open(self._sink.path) as f:
@@ -370,19 +442,33 @@ class RemoteShipper:
                 stripped = raw.strip()
                 if not stripped:
                     continue
-                event = AuditEvent.model_validate_json(stripped)
-                if event.seq > seq:
-                    yield event
+                yield AuditEvent.model_validate_json(stripped)
 
-    def _ship_with_backoff(self, event: AuditEvent) -> None:
+    def _ship(self, batch: list[AuditEvent]) -> None:
+        """Ship a batch in one request when the transport supports it, else
+        fall back to one request per event (custom Transport implementations)."""
+        ship_batch = getattr(self._transport, "ship_batch", None)
+        if ship_batch is not None:
+            ship_batch(batch)
+        else:
+            for event in batch:
+                self._transport.ship(event)
+
+    def _ship_batch_with_backoff(self, batch: list[AuditEvent]) -> bool:
+        """Ship a batch with exponential backoff. Returns True once acked, or
+        False if we were told to stop before delivery succeeded (caller must
+        not advance the offset in that case)."""
+        if not batch:
+            return True
         backoff = self._poll
         while not self._stop.is_set():
             try:
-                self._transport.ship(event)
-                return
+                self._ship(batch)
+                return True
             except Exception:
                 time.sleep(min(backoff, self._max_backoff))
                 backoff = min(backoff * 2, self._max_backoff)
+        return False
 
 
 __all__ = [

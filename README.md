@@ -3,7 +3,7 @@
 Enterprise Claude monitoring + alerting + runtime policy enforcement
 for AI agents.
 
-Two complementary subsystems share one control plane:
+Three complementary subsystems share one control plane:
 
 1. **Monitoring & alerting** — `AnthropicMonitor` wraps your
    `anthropic.Anthropic` client and ships a metric event per Claude API
@@ -16,10 +16,30 @@ Two complementary subsystems share one control plane:
    evaluates a declarative policy on every tool call and returns
    `allow` · `deny` · `transform` · `require_approval` with a
    tamper-evident audit log of every decision. Ships starter
-   compliance bundles for NIST AI RMF, ISO/IEC 42001, EU AI Act, and
-   an `agent_abuse_patterns` hardening bundle (36 rules).
+   compliance bundles for NIST AI RMF, ISO/IEC 42001, EU AI Act, an
+   `agent_abuse_patterns` hardening bundle (36 rules), and a
+   `prompt_injection` bundle (18 rules) detecting prompt-injection,
+   jailbreak, and indirect-injection / data-exfil patterns
+   (OWASP LLM01/LLM02/LLM06).
+3. **Detection & response (SIEM / EDR)** — a detection engine correlates
+   the audit + metric stream into **security findings** (prompt-injection
+   attempts, repeated-denial bursts, injection→exfil kill-chains,
+   approval-abuse probing, new-tool/UEBA anomalies), each mapped to MITRE
+   ATLAS / OWASP LLM with a triage lifecycle (open → triaging → resolved /
+   false-positive). Findings drive **response**: a **quarantine
+   kill-switch** isolates an agent or session (the SDK denies its tool
+   calls inline via `QuarantineGuard`), applied manually by an analyst or
+   automatically on a CRITICAL finding when auto-response is enabled. Runs
+   on a Celery beat schedule and on demand via `POST /findings/run`.
+   Findings above a per-org severity threshold are **forwarded** to
+   external SIEM/SOAR systems as OCSF-flavored events. Orgs also author
+   their own **detection-as-code** rules (`/detection-rules`) — a bounded,
+   structured match (no code/regex, never a ReDoS/RCE vector) run alongside
+   the built-ins. A **SOC console backend** (`GET /overview`, `GET
+   /timeline/session/{id}`) and **fleet management** (SDK heartbeat
+   enrollment → `GET /agents` with health) round out the platform.
 
-Both layers feed the same audit + reports surface so security, SRE,
+These layers feed the same audit + reports surface so security, SRE,
 and compliance teams work off one source of truth. Apache 2.0.
 
 ## Layout

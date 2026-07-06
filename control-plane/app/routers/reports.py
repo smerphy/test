@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
-from app.models import ComplianceReport, Organization, ReportStatus
+from app.deps import get_owned
+from app.models import ComplianceReport, Organization, ReportStatus, Role
 from app.schemas import ComplianceReportIn, ComplianceReportOut
+from app.services.access_log import access_log
 from app.services.pdf import render_report_pdf
 from app.workers.tasks import generate_report_task
 
@@ -26,6 +30,7 @@ def request_report(
     body: ComplianceReportIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> ComplianceReport:
     if body.period_end <= body.period_start:
         raise HTTPException(
@@ -53,11 +58,15 @@ def request_report(
 def list_reports(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ComplianceReport]:
     stmt = (
         select(ComplianceReport)
         .where(ComplianceReport.organization_id == org.id)
         .order_by(ComplianceReport.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return list(session.execute(stmt).scalars().all())
 
@@ -70,10 +79,9 @@ def get_report(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> ComplianceReport:
-    report = session.get(ComplianceReport, report_id)
-    if report is None or report.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="report not found")
-    return report
+    return get_owned(
+        session, ComplianceReport, report_id, org, detail="report not found"
+    )
 
 
 @router.get("/reports/compliance/{report_id}/pdf")
@@ -81,10 +89,11 @@ def get_report_pdf(
     report_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _al: None = Depends(access_log("reports", "export")),
 ) -> Response:
-    report = session.get(ComplianceReport, report_id)
-    if report is None or report.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="report not found")
+    report = get_owned(
+        session, ComplianceReport, report_id, org, detail="report not found"
+    )
     if report.status is not ReportStatus.COMPLETE:
         raise HTTPException(
             status.HTTP_409_CONFLICT,

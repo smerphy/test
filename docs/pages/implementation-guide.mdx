@@ -112,25 +112,70 @@ python -c "from pathlib import Path; from praetor import verify_chain; print(ver
 
 ### 3b. Approvals
 
-Configure a webhook so `require_approval` decisions notify Slack:
+When a `PraetorClient` is configured with a `control_plane_url`, approvals
+are brokered through the control plane automatically — no extra wiring:
 
 ```python
-from praetor import ApprovalRegistry, WebhookApprovalHandler
+client = PraetorClient(
+    bundle_path="policy.yaml",
+    audit_log_path="audit.jsonl",
+    control_plane_url="https://praetor.example.com",
+    api_key="cp-xxx",
+    org_slug="acme",
+)
+```
 
-registry = ApprovalRegistry()  # shared across the process
+On a `require_approval` decision the SDK creates the request on the
+control plane (`POST /approvals`) and blocks, polling
+`GET /approvals/{id}` until a human clicks Approve/Deny in the dashboard
+(the UI's `POST /approvals/{id}/resolve`) or the request times out. Because
+the SDK only makes outbound calls, this works for agents behind NAT — no
+inbound webhook to the agent is required. Tune the wait with an explicit
+handler:
+
+```python
+from praetor import ControlPlaneApprovalHandler
+
 PraetorClient(
     ...,
-    approval_handler=WebhookApprovalHandler(
-        webhook_url=os.environ["SLACK_APPROVAL_WEBHOOK"],
-        registry=registry,
+    control_plane_url="https://praetor.example.com",
+    approval_handler=ControlPlaneApprovalHandler(
+        "https://praetor.example.com",
+        api_key="cp-xxx",
+        org_slug="acme",
         timeout_seconds=300,
+        poll_interval_seconds=2,
     ),
 )
 ```
 
-The handler blocks until a human clicks Approve/Deny in the
-control-plane UI; the UI's `POST /approvals/{id}/resolve` invokes
-`registry.resolve(...)` and unblocks the agent.
+For a single-process setup with no control plane, `WebhookApprovalHandler`
+posts to a Slack webhook and blocks on an in-process `ApprovalRegistry`
+that your own resolver calls.
+
+**Notifications.** Point pending approvals at a Slack (or generic) webhook
+so reviewers are pinged instead of watching the dashboard:
+
+```bash
+curl -X PATCH https://praetor.example.com/org \
+  -H "X-API-Key: cp-xxx" -H "X-Org-Slug: acme" \
+  -d '{"approval_webhook_url": "https://hooks.slack.com/services/…"}'
+```
+
+**Approve/Deny from Slack.** The posted message includes Approve/Deny
+buttons. To make them resolve the request, create a Slack app with
+interactivity enabled, set its Request URL to
+`https://praetor.example.com/approvals/slack/actions`, and set
+`PRAETOR_SLACK_SIGNING_SECRET` on the control plane — the endpoint verifies
+Slack's request signature before resolving. Without the secret the endpoint
+returns 503; resolution via the dashboard (`POST /approvals/{id}/resolve`)
+always works.
+
+**Expiry.** A pending request that no one resolves is swept to `EXPIRED`
+after `PRAETOR_APPROVAL_TTL_MINUTES` (default 60) by the
+`praetor.approvals.expire_stale` beat task, so a crashed agent's request
+doesn't linger and the SDK's poll terminates as a denial. Run the periodic
+sweeps with `celery -A app.celery_app beat` alongside the worker.
 
 ### 3c. Deploy the control plane
 

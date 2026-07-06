@@ -68,6 +68,33 @@ from praetor_engine.bundles import load_bundle
 policies = load_bundle("nist_ai_rmf") + load_bundle("agent_abuse_patterns")
 ```
 
+## Prompt injection & jailbreak detection
+
+File: `engine/praetor_engine/bundles/prompt_injection.praetor`
+
+Scans the common text-bearing tool-argument fields (`prompt`, `message`,
+`content`, `text`, `input`, `body`, `query`) for prompt-injection and
+jailbreak patterns. Clear manipulation attempts are denied; ambiguous
+signals require human approval to bound false positives. Cross-tagged to
+OWASP LLM01/LLM02/LLM06.
+
+| Effect | Detects |
+| --- | --- |
+| `deny` | ignore/override prior instructions; disable/bypass guidelines or safety; jailbreak personas (DAN/STAN/AIM, developer/god mode); roleplay-to-escape; warning/refusal suppression; chat/instruction control tokens (`<\|im_start\|>`, `[INST]`, `<<SYS>>`); "new instructions:" preambles; tool-redefinition (confused deputy); conversation/system-prompt exfil; invisible Unicode tag characters |
+| `require_approval` | system-prompt / instruction extraction; indirect-injection markers in content; encoded/obfuscated payloads and long base64 blobs; markdown-image data-exfil channels; zero-width-character smuggling; test/fiction framing used to justify ignoring rules; prompts asking to reveal secrets |
+
+Patterns are written to be linear-time (bounded gaps and character
+classes, no nested unbounded quantifiers), so the bundle is not itself a
+ReDoS vector.
+
+```python
+policies = (
+    load_bundle("nist_ai_rmf")
+    + load_bundle("agent_abuse_patterns")
+    + load_bundle("prompt_injection")
+)
+```
+
 Red-team test coverage lives in `engine/tests/test_red_team.py` — one
 synthetic `PolicyInput` per rule, asserting the evaluator returns the
 expected decision.

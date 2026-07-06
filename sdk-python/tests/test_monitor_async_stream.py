@@ -151,9 +151,11 @@ def test_streaming_records_error_on_enter() -> None:
     monitor = AnthropicMonitor(
         client, agent_id="a", sink=CallbackMetricSink(events.append)
     )
-    with pytest.raises(RuntimeError, match="connect failed"):
-        with monitor.messages.stream(model="claude-opus-4-7", messages=[]):
-            pass
+    with (
+        pytest.raises(RuntimeError, match="connect failed"),
+        monitor.messages.stream(model="claude-opus-4-7", messages=[]),
+    ):
+        pass
     assert events[0].status == "error"
     assert events[0].error_type == "RuntimeError"
 

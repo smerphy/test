@@ -36,6 +36,8 @@ class ApprovalRequest(IdMixin, TimestampMixin, Base):
         nullable=False,
         default=ApprovalStatus.PENDING,
     )
+    # When a still-PENDING request is swept to EXPIRED. Null = never expires.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_by: Mapped[str | None] = mapped_column(String(255))
 

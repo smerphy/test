@@ -1,0 +1,40 @@
+# Praetor MCP proxy config. Run: praetor-mcp --config praetor-mcp.yaml
+# Validate without the MCP runtime: praetor-mcp --check --config praetor-mcp.yaml
+
+control_plane:
+  url: https://praetor.example.com
+  api_key: ${PRAETOR_API_KEY}     # expand via your process env / secret manager
+  org_slug: acme
+
+policy:
+  bundle_path: ./policies.yaml     # Praetor policy bundle the gate evaluates
+
+agent:
+  id: research-agent-1             # attributed on the audit chain
+
+enforcement:
+  on_error: deny                   # fail-closed (security default) | allow
+  approval_timeout_seconds: 300
+  hide_denied_tools: true          # drop policy-denied tools from tools/list
+
+audit_log_path: ./praetor-mcp-audit.jsonl
+
+# One or more upstream MCP servers to police (gateway mode namespaces tools
+# as "<name>__<tool>").
+upstreams:
+  - name: github
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+  - name: filesystem
+    transport: stdio
+    command: ["mcp-server-filesystem", "/data"]
+
+listen:
+  # stdio: sidecar — the agent launches praetor-mcp as its MCP server command.
+  # streamable-http: deployment mode — serve an ASGI app; point the agent's MCP
+  # client at http://<bind><path>.
+  transport: streamable-http
+  bind: 127.0.0.1:8090
+  path: /mcp

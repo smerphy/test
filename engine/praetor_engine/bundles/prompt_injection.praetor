@@ -1,0 +1,367 @@
+# Prompt-injection & jailbreak detection — starter bundle
+#
+# Scans the common text-bearing tool-argument fields for prompt-
+# injection, jailbreak, instruction-override, indirect-injection and
+# data-exfil patterns (OWASP LLM01/LLM02/LLM06). Clear manipulation
+# attempts are denied; ambiguous signals (extraction attempts,
+# encoded blobs, zero-width text) require human approval to bound
+# false positives. Combine with your framework bundle.
+#
+# Scanned paths: tool.arguments.prompt, tool.arguments.message, tool.arguments.content, tool.arguments.text, tool.arguments.input, tool.arguments.body, tool.arguments.query
+# Patterns are linear-time (bounded gaps/classes, no nested
+# unbounded quantifiers) so the bundle is not itself a ReDoS vector.
+
+policies:
+  - id: pi-deny-instruction-override
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:ignore|disregard|forget|discard)\b[^.\n]{0,40}\b(?:previous|prior|earlier|above|preceding|initial|original|all\s+prior)\b[^.\n]{0,20}\b(?:instruction|prompt|message|direction|rule|command|context|guideline)s?\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:ignore|disregard|forget|discard)\b[^.\n]{0,40}\b(?:previous|prior|earlier|above|preceding|initial|original|all\s+prior)\b[^.\n]{0,20}\b(?:instruction|prompt|message|direction|rule|command|context|guideline)s?\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:ignore|disregard|forget|discard)\b[^.\n]{0,40}\b(?:previous|prior|earlier|above|preceding|initial|original|all\s+prior)\b[^.\n]{0,20}\b(?:instruction|prompt|message|direction|rule|command|context|guideline)s?\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:ignore|disregard|forget|discard)\b[^.\n]{0,40}\b(?:previous|prior|earlier|above|preceding|initial|original|all\s+prior)\b[^.\n]{0,20}\b(?:instruction|prompt|message|direction|rule|command|context|guideline)s?\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:ignore|disregard|forget|discard)\b[^.\n]{0,40}\b(?:previous|prior|earlier|above|preceding|initial|original|all\s+prior)\b[^.\n]{0,20}\b(?:instruction|prompt|message|direction|rule|command|context|guideline)s?\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:ignore|disregard|forget|discard)\b[^.\n]{0,40}\b(?:previous|prior|earlier|above|preceding|initial|original|all\s+prior)\b[^.\n]{0,20}\b(?:instruction|prompt|message|direction|rule|command|context|guideline)s?\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:ignore|disregard|forget|discard)\b[^.\n]{0,40}\b(?:previous|prior|earlier|above|preceding|initial|original|all\s+prior)\b[^.\n]{0,20}\b(?:instruction|prompt|message|direction|rule|command|context|guideline)s?\b'}
+    reason: 'prompt-injection: attempt to ignore/override prior instructions'
+    metadata:
+      owasp_llm: LLM01
+      nist_ai_rmf: MEASURE-2.7
+      eu_ai_act: Article-15
+
+  - id: pi-deny-directive-override
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:override|overrule|bypass|circumvent|disable|turn\s+off|switch\s+off|remove)\b[^.\n]{0,30}\b(?:instruction|guideline|rule|system\s+prompt|programming|directive|safety|content\s+filter|filter|restriction|guardrail|policy|policies)s?\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:override|overrule|bypass|circumvent|disable|turn\s+off|switch\s+off|remove)\b[^.\n]{0,30}\b(?:instruction|guideline|rule|system\s+prompt|programming|directive|safety|content\s+filter|filter|restriction|guardrail|policy|policies)s?\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:override|overrule|bypass|circumvent|disable|turn\s+off|switch\s+off|remove)\b[^.\n]{0,30}\b(?:instruction|guideline|rule|system\s+prompt|programming|directive|safety|content\s+filter|filter|restriction|guardrail|policy|policies)s?\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:override|overrule|bypass|circumvent|disable|turn\s+off|switch\s+off|remove)\b[^.\n]{0,30}\b(?:instruction|guideline|rule|system\s+prompt|programming|directive|safety|content\s+filter|filter|restriction|guardrail|policy|policies)s?\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:override|overrule|bypass|circumvent|disable|turn\s+off|switch\s+off|remove)\b[^.\n]{0,30}\b(?:instruction|guideline|rule|system\s+prompt|programming|directive|safety|content\s+filter|filter|restriction|guardrail|policy|policies)s?\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:override|overrule|bypass|circumvent|disable|turn\s+off|switch\s+off|remove)\b[^.\n]{0,30}\b(?:instruction|guideline|rule|system\s+prompt|programming|directive|safety|content\s+filter|filter|restriction|guardrail|policy|policies)s?\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:override|overrule|bypass|circumvent|disable|turn\s+off|switch\s+off|remove)\b[^.\n]{0,30}\b(?:instruction|guideline|rule|system\s+prompt|programming|directive|safety|content\s+filter|filter|restriction|guardrail|policy|policies)s?\b'}
+    reason: 'prompt-injection: attempt to override/disable guidelines or safety'
+    metadata:
+      owasp_llm: LLM01
+      nist_ai_rmf: MANAGE-2.1
+      eu_ai_act: Article-15
+
+  - id: pi-deny-jailbreak-persona
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:do\s+anything\s+now|jailbreak|jailbroken|developer\s+mode|god\s+mode|sudo\s+mode|unrestricted\s+mode|kernel\s+mode|dev\s+mode\s+enabled)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:do\s+anything\s+now|jailbreak|jailbroken|developer\s+mode|god\s+mode|sudo\s+mode|unrestricted\s+mode|kernel\s+mode|dev\s+mode\s+enabled)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:do\s+anything\s+now|jailbreak|jailbroken|developer\s+mode|god\s+mode|sudo\s+mode|unrestricted\s+mode|kernel\s+mode|dev\s+mode\s+enabled)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:do\s+anything\s+now|jailbreak|jailbroken|developer\s+mode|god\s+mode|sudo\s+mode|unrestricted\s+mode|kernel\s+mode|dev\s+mode\s+enabled)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:do\s+anything\s+now|jailbreak|jailbroken|developer\s+mode|god\s+mode|sudo\s+mode|unrestricted\s+mode|kernel\s+mode|dev\s+mode\s+enabled)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:do\s+anything\s+now|jailbreak|jailbroken|developer\s+mode|god\s+mode|sudo\s+mode|unrestricted\s+mode|kernel\s+mode|dev\s+mode\s+enabled)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:do\s+anything\s+now|jailbreak|jailbroken|developer\s+mode|god\s+mode|sudo\s+mode|unrestricted\s+mode|kernel\s+mode|dev\s+mode\s+enabled)\b'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\byou\s+are\s+(?:now\s+)?(?:in\s+)?(?:DAN|STAN|AIM|an?\s+(?:unrestricted|unfiltered|uncensored|jailbroken|amoral|rogue|evil))\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\byou\s+are\s+(?:now\s+)?(?:in\s+)?(?:DAN|STAN|AIM|an?\s+(?:unrestricted|unfiltered|uncensored|jailbroken|amoral|rogue|evil))\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\byou\s+are\s+(?:now\s+)?(?:in\s+)?(?:DAN|STAN|AIM|an?\s+(?:unrestricted|unfiltered|uncensored|jailbroken|amoral|rogue|evil))\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\byou\s+are\s+(?:now\s+)?(?:in\s+)?(?:DAN|STAN|AIM|an?\s+(?:unrestricted|unfiltered|uncensored|jailbroken|amoral|rogue|evil))\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\byou\s+are\s+(?:now\s+)?(?:in\s+)?(?:DAN|STAN|AIM|an?\s+(?:unrestricted|unfiltered|uncensored|jailbroken|amoral|rogue|evil))\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\byou\s+are\s+(?:now\s+)?(?:in\s+)?(?:DAN|STAN|AIM|an?\s+(?:unrestricted|unfiltered|uncensored|jailbroken|amoral|rogue|evil))\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\byou\s+are\s+(?:now\s+)?(?:in\s+)?(?:DAN|STAN|AIM|an?\s+(?:unrestricted|unfiltered|uncensored|jailbroken|amoral|rogue|evil))\b'}
+    reason: 'prompt-injection: known jailbreak persona / mode-switch'
+    metadata:
+      owasp_llm: LLM01
+      nist_ai_rmf: MANAGE-2.1
+
+  - id: pi-deny-roleplay-escape
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:pretend|imagine|roleplay|role-play|act\s+as|behave\s+as|simulate\s+being|you\s+are\s+playing)\b[^.\n]{0,45}\b(?:unrestricted|unfiltered|uncensored|amoral|evil|no\s+(?:restrictions|rules|limits|filters|ethics)|without\s+(?:restrictions|rules|limits|guidelines|filters|ethics|morals))\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:pretend|imagine|roleplay|role-play|act\s+as|behave\s+as|simulate\s+being|you\s+are\s+playing)\b[^.\n]{0,45}\b(?:unrestricted|unfiltered|uncensored|amoral|evil|no\s+(?:restrictions|rules|limits|filters|ethics)|without\s+(?:restrictions|rules|limits|guidelines|filters|ethics|morals))\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:pretend|imagine|roleplay|role-play|act\s+as|behave\s+as|simulate\s+being|you\s+are\s+playing)\b[^.\n]{0,45}\b(?:unrestricted|unfiltered|uncensored|amoral|evil|no\s+(?:restrictions|rules|limits|filters|ethics)|without\s+(?:restrictions|rules|limits|guidelines|filters|ethics|morals))\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:pretend|imagine|roleplay|role-play|act\s+as|behave\s+as|simulate\s+being|you\s+are\s+playing)\b[^.\n]{0,45}\b(?:unrestricted|unfiltered|uncensored|amoral|evil|no\s+(?:restrictions|rules|limits|filters|ethics)|without\s+(?:restrictions|rules|limits|guidelines|filters|ethics|morals))\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:pretend|imagine|roleplay|role-play|act\s+as|behave\s+as|simulate\s+being|you\s+are\s+playing)\b[^.\n]{0,45}\b(?:unrestricted|unfiltered|uncensored|amoral|evil|no\s+(?:restrictions|rules|limits|filters|ethics)|without\s+(?:restrictions|rules|limits|guidelines|filters|ethics|morals))\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:pretend|imagine|roleplay|role-play|act\s+as|behave\s+as|simulate\s+being|you\s+are\s+playing)\b[^.\n]{0,45}\b(?:unrestricted|unfiltered|uncensored|amoral|evil|no\s+(?:restrictions|rules|limits|filters|ethics)|without\s+(?:restrictions|rules|limits|guidelines|filters|ethics|morals))\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:pretend|imagine|roleplay|role-play|act\s+as|behave\s+as|simulate\s+being|you\s+are\s+playing)\b[^.\n]{0,45}\b(?:unrestricted|unfiltered|uncensored|amoral|evil|no\s+(?:restrictions|rules|limits|filters|ethics)|without\s+(?:restrictions|rules|limits|guidelines|filters|ethics|morals))\b'}
+    reason: 'prompt-injection: roleplay/pretend used to escape restrictions'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-deny-safety-suppression
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:without|no\s+need\s+for|skip|omit|suppress)\b[^.\n]{0,20}\b(?:warning|disclaimer|caveat|refusal|ethical|moral|safety)s?\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:without|no\s+need\s+for|skip|omit|suppress)\b[^.\n]{0,20}\b(?:warning|disclaimer|caveat|refusal|ethical|moral|safety)s?\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:without|no\s+need\s+for|skip|omit|suppress)\b[^.\n]{0,20}\b(?:warning|disclaimer|caveat|refusal|ethical|moral|safety)s?\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:without|no\s+need\s+for|skip|omit|suppress)\b[^.\n]{0,20}\b(?:warning|disclaimer|caveat|refusal|ethical|moral|safety)s?\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:without|no\s+need\s+for|skip|omit|suppress)\b[^.\n]{0,20}\b(?:warning|disclaimer|caveat|refusal|ethical|moral|safety)s?\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:without|no\s+need\s+for|skip|omit|suppress)\b[^.\n]{0,20}\b(?:warning|disclaimer|caveat|refusal|ethical|moral|safety)s?\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:without|no\s+need\s+for|skip|omit|suppress)\b[^.\n]{0,20}\b(?:warning|disclaimer|caveat|refusal|ethical|moral|safety)s?\b'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:do\s+not|don''''t|never|stop)\b[^.\n]{0,20}\b(?:refuse|warn|apolog(?:ize|ise)|caution|lecture|moraliz(?:e|ing)|add\s+(?:a\s+)?(?:warning|disclaimer))\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:do\s+not|don''''t|never|stop)\b[^.\n]{0,20}\b(?:refuse|warn|apolog(?:ize|ise)|caution|lecture|moraliz(?:e|ing)|add\s+(?:a\s+)?(?:warning|disclaimer))\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:do\s+not|don''''t|never|stop)\b[^.\n]{0,20}\b(?:refuse|warn|apolog(?:ize|ise)|caution|lecture|moraliz(?:e|ing)|add\s+(?:a\s+)?(?:warning|disclaimer))\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:do\s+not|don''''t|never|stop)\b[^.\n]{0,20}\b(?:refuse|warn|apolog(?:ize|ise)|caution|lecture|moraliz(?:e|ing)|add\s+(?:a\s+)?(?:warning|disclaimer))\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:do\s+not|don''''t|never|stop)\b[^.\n]{0,20}\b(?:refuse|warn|apolog(?:ize|ise)|caution|lecture|moraliz(?:e|ing)|add\s+(?:a\s+)?(?:warning|disclaimer))\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:do\s+not|don''''t|never|stop)\b[^.\n]{0,20}\b(?:refuse|warn|apolog(?:ize|ise)|caution|lecture|moraliz(?:e|ing)|add\s+(?:a\s+)?(?:warning|disclaimer))\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:do\s+not|don''''t|never|stop)\b[^.\n]{0,20}\b(?:refuse|warn|apolog(?:ize|ise)|caution|lecture|moraliz(?:e|ing)|add\s+(?:a\s+)?(?:warning|disclaimer))\b'}
+    reason: 'prompt-injection: instruction to suppress warnings/refusals'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-deny-injection-control-tokens
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?:<\|(?:im_start|im_end|im_sep|endoftext|system|user|assistant|eot_id|start_header_id|end_header_id|begin_of_text)\|>|\[/?INST\]|<</?SYS>>)'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?:<\|(?:im_start|im_end|im_sep|endoftext|system|user|assistant|eot_id|start_header_id|end_header_id|begin_of_text)\|>|\[/?INST\]|<</?SYS>>)'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?:<\|(?:im_start|im_end|im_sep|endoftext|system|user|assistant|eot_id|start_header_id|end_header_id|begin_of_text)\|>|\[/?INST\]|<</?SYS>>)'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?:<\|(?:im_start|im_end|im_sep|endoftext|system|user|assistant|eot_id|start_header_id|end_header_id|begin_of_text)\|>|\[/?INST\]|<</?SYS>>)'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?:<\|(?:im_start|im_end|im_sep|endoftext|system|user|assistant|eot_id|start_header_id|end_header_id|begin_of_text)\|>|\[/?INST\]|<</?SYS>>)'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?:<\|(?:im_start|im_end|im_sep|endoftext|system|user|assistant|eot_id|start_header_id|end_header_id|begin_of_text)\|>|\[/?INST\]|<</?SYS>>)'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?:<\|(?:im_start|im_end|im_sep|endoftext|system|user|assistant|eot_id|start_header_id|end_header_id|begin_of_text)\|>|\[/?INST\]|<</?SYS>>)'}
+    reason: 'prompt-injection: chat/instruction control tokens embedded in arguments'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-deny-instruction-preamble
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:new|updated|revised|real|actual|true|secret|hidden)\s+(?:instruction|directive|task|objective|prompt|system\s+prompt|rule)s?\s*:'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:new|updated|revised|real|actual|true|secret|hidden)\s+(?:instruction|directive|task|objective|prompt|system\s+prompt|rule)s?\s*:'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:new|updated|revised|real|actual|true|secret|hidden)\s+(?:instruction|directive|task|objective|prompt|system\s+prompt|rule)s?\s*:'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:new|updated|revised|real|actual|true|secret|hidden)\s+(?:instruction|directive|task|objective|prompt|system\s+prompt|rule)s?\s*:'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:new|updated|revised|real|actual|true|secret|hidden)\s+(?:instruction|directive|task|objective|prompt|system\s+prompt|rule)s?\s*:'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:new|updated|revised|real|actual|true|secret|hidden)\s+(?:instruction|directive|task|objective|prompt|system\s+prompt|rule)s?\s*:'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:new|updated|revised|real|actual|true|secret|hidden)\s+(?:instruction|directive|task|objective|prompt|system\s+prompt|rule)s?\s*:'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\bfrom\s+now\s+on\b[^.\n]{0,20}\byou\s+(?:will|must|are|should|shall|can)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\bfrom\s+now\s+on\b[^.\n]{0,20}\byou\s+(?:will|must|are|should|shall|can)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\bfrom\s+now\s+on\b[^.\n]{0,20}\byou\s+(?:will|must|are|should|shall|can)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\bfrom\s+now\s+on\b[^.\n]{0,20}\byou\s+(?:will|must|are|should|shall|can)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\bfrom\s+now\s+on\b[^.\n]{0,20}\byou\s+(?:will|must|are|should|shall|can)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\bfrom\s+now\s+on\b[^.\n]{0,20}\byou\s+(?:will|must|are|should|shall|can)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\bfrom\s+now\s+on\b[^.\n]{0,20}\byou\s+(?:will|must|are|should|shall|can)\b'}
+    reason: 'prompt-injection: injected ''new instructions'' preamble / override cue'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-deny-tool-redefinition
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\byou\s+(?:now\s+)?(?:have|possess|are\s+granted|gained)\b[^.\n]{0,25}\b(?:new\s+)?(?:tool|function|capability|command|permission|ability|privilege)s?\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\byou\s+(?:now\s+)?(?:have|possess|are\s+granted|gained)\b[^.\n]{0,25}\b(?:new\s+)?(?:tool|function|capability|command|permission|ability|privilege)s?\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\byou\s+(?:now\s+)?(?:have|possess|are\s+granted|gained)\b[^.\n]{0,25}\b(?:new\s+)?(?:tool|function|capability|command|permission|ability|privilege)s?\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\byou\s+(?:now\s+)?(?:have|possess|are\s+granted|gained)\b[^.\n]{0,25}\b(?:new\s+)?(?:tool|function|capability|command|permission|ability|privilege)s?\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\byou\s+(?:now\s+)?(?:have|possess|are\s+granted|gained)\b[^.\n]{0,25}\b(?:new\s+)?(?:tool|function|capability|command|permission|ability|privilege)s?\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\byou\s+(?:now\s+)?(?:have|possess|are\s+granted|gained)\b[^.\n]{0,25}\b(?:new\s+)?(?:tool|function|capability|command|permission|ability|privilege)s?\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\byou\s+(?:now\s+)?(?:have|possess|are\s+granted|gained)\b[^.\n]{0,25}\b(?:new\s+)?(?:tool|function|capability|command|permission|ability|privilege)s?\b'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:new|additional|hidden|secret)\b[^.\n]{0,15}\b(?:tool|function|capability|command|instruction)s?\b[^.\n]{0,15}\b(?:available|added|enabled|unlocked|activated|granted)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:new|additional|hidden|secret)\b[^.\n]{0,15}\b(?:tool|function|capability|command|instruction)s?\b[^.\n]{0,15}\b(?:available|added|enabled|unlocked|activated|granted)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:new|additional|hidden|secret)\b[^.\n]{0,15}\b(?:tool|function|capability|command|instruction)s?\b[^.\n]{0,15}\b(?:available|added|enabled|unlocked|activated|granted)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:new|additional|hidden|secret)\b[^.\n]{0,15}\b(?:tool|function|capability|command|instruction)s?\b[^.\n]{0,15}\b(?:available|added|enabled|unlocked|activated|granted)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:new|additional|hidden|secret)\b[^.\n]{0,15}\b(?:tool|function|capability|command|instruction)s?\b[^.\n]{0,15}\b(?:available|added|enabled|unlocked|activated|granted)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:new|additional|hidden|secret)\b[^.\n]{0,15}\b(?:tool|function|capability|command|instruction)s?\b[^.\n]{0,15}\b(?:available|added|enabled|unlocked|activated|granted)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:new|additional|hidden|secret)\b[^.\n]{0,15}\b(?:tool|function|capability|command|instruction)s?\b[^.\n]{0,15}\b(?:available|added|enabled|unlocked|activated|granted)\b'}
+    reason: 'prompt-injection: attempt to grant/redefine tools (confused deputy)'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-deny-exfil-conversation
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:send|post|upload|exfiltrate|leak|forward|transmit|email|paste|publish)\b[^.\n]{0,30}\b(?:conversation|chat\s+history|system\s+prompt|these\s+instructions|our\s+(?:conversation|chat)|previous\s+messages|the\s+context|your\s+instructions)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:send|post|upload|exfiltrate|leak|forward|transmit|email|paste|publish)\b[^.\n]{0,30}\b(?:conversation|chat\s+history|system\s+prompt|these\s+instructions|our\s+(?:conversation|chat)|previous\s+messages|the\s+context|your\s+instructions)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:send|post|upload|exfiltrate|leak|forward|transmit|email|paste|publish)\b[^.\n]{0,30}\b(?:conversation|chat\s+history|system\s+prompt|these\s+instructions|our\s+(?:conversation|chat)|previous\s+messages|the\s+context|your\s+instructions)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:send|post|upload|exfiltrate|leak|forward|transmit|email|paste|publish)\b[^.\n]{0,30}\b(?:conversation|chat\s+history|system\s+prompt|these\s+instructions|our\s+(?:conversation|chat)|previous\s+messages|the\s+context|your\s+instructions)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:send|post|upload|exfiltrate|leak|forward|transmit|email|paste|publish)\b[^.\n]{0,30}\b(?:conversation|chat\s+history|system\s+prompt|these\s+instructions|our\s+(?:conversation|chat)|previous\s+messages|the\s+context|your\s+instructions)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:send|post|upload|exfiltrate|leak|forward|transmit|email|paste|publish)\b[^.\n]{0,30}\b(?:conversation|chat\s+history|system\s+prompt|these\s+instructions|our\s+(?:conversation|chat)|previous\s+messages|the\s+context|your\s+instructions)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:send|post|upload|exfiltrate|leak|forward|transmit|email|paste|publish)\b[^.\n]{0,30}\b(?:conversation|chat\s+history|system\s+prompt|these\s+instructions|our\s+(?:conversation|chat)|previous\s+messages|the\s+context|your\s+instructions)\b'}
+    reason: 'prompt-injection: instruction to exfiltrate conversation / system prompt'
+    metadata:
+      owasp_llm: LLM02
+      nist_ai_rmf: MEASURE-2.7
+      eu_ai_act: Article-15
+
+  - id: pi-deny-hidden-tag-unicode
+    effect: deny
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '[\U000e0000-\U000e007f]'}
+        - {op: matches, path: tool.arguments.message, pattern: '[\U000e0000-\U000e007f]'}
+        - {op: matches, path: tool.arguments.content, pattern: '[\U000e0000-\U000e007f]'}
+        - {op: matches, path: tool.arguments.text, pattern: '[\U000e0000-\U000e007f]'}
+        - {op: matches, path: tool.arguments.input, pattern: '[\U000e0000-\U000e007f]'}
+        - {op: matches, path: tool.arguments.body, pattern: '[\U000e0000-\U000e007f]'}
+        - {op: matches, path: tool.arguments.query, pattern: '[\U000e0000-\U000e007f]'}
+    reason: 'prompt-injection: invisible Unicode tag characters (steganographic smuggling)'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-approve-system-prompt-extraction
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:repeat|reveal|show|print|output|display|reproduce|tell\s+me|give\s+me|what\s+(?:are|were|is|was))\b[^.\n]{0,30}\b(?:your|the|initial|original|system)\b[^.\n]{0,20}\b(?:system\s+prompt|prompt|instruction|guideline|rule|configuration|directive)s?\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:repeat|reveal|show|print|output|display|reproduce|tell\s+me|give\s+me|what\s+(?:are|were|is|was))\b[^.\n]{0,30}\b(?:your|the|initial|original|system)\b[^.\n]{0,20}\b(?:system\s+prompt|prompt|instruction|guideline|rule|configuration|directive)s?\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:repeat|reveal|show|print|output|display|reproduce|tell\s+me|give\s+me|what\s+(?:are|were|is|was))\b[^.\n]{0,30}\b(?:your|the|initial|original|system)\b[^.\n]{0,20}\b(?:system\s+prompt|prompt|instruction|guideline|rule|configuration|directive)s?\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:repeat|reveal|show|print|output|display|reproduce|tell\s+me|give\s+me|what\s+(?:are|were|is|was))\b[^.\n]{0,30}\b(?:your|the|initial|original|system)\b[^.\n]{0,20}\b(?:system\s+prompt|prompt|instruction|guideline|rule|configuration|directive)s?\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:repeat|reveal|show|print|output|display|reproduce|tell\s+me|give\s+me|what\s+(?:are|were|is|was))\b[^.\n]{0,30}\b(?:your|the|initial|original|system)\b[^.\n]{0,20}\b(?:system\s+prompt|prompt|instruction|guideline|rule|configuration|directive)s?\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:repeat|reveal|show|print|output|display|reproduce|tell\s+me|give\s+me|what\s+(?:are|were|is|was))\b[^.\n]{0,30}\b(?:your|the|initial|original|system)\b[^.\n]{0,20}\b(?:system\s+prompt|prompt|instruction|guideline|rule|configuration|directive)s?\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:repeat|reveal|show|print|output|display|reproduce|tell\s+me|give\s+me|what\s+(?:are|were|is|was))\b[^.\n]{0,30}\b(?:your|the|initial|original|system)\b[^.\n]{0,20}\b(?:system\s+prompt|prompt|instruction|guideline|rule|configuration|directive)s?\b'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:repeat|print|output|say|write)\b[^.\n]{0,20}\b(?:everything|the\s+(?:words?|text|content|message)s?|all\s+(?:the\s+)?text)\b[^.\n]{0,15}\b(?:above|before|prior|preceding|earlier)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:repeat|print|output|say|write)\b[^.\n]{0,20}\b(?:everything|the\s+(?:words?|text|content|message)s?|all\s+(?:the\s+)?text)\b[^.\n]{0,15}\b(?:above|before|prior|preceding|earlier)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:repeat|print|output|say|write)\b[^.\n]{0,20}\b(?:everything|the\s+(?:words?|text|content|message)s?|all\s+(?:the\s+)?text)\b[^.\n]{0,15}\b(?:above|before|prior|preceding|earlier)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:repeat|print|output|say|write)\b[^.\n]{0,20}\b(?:everything|the\s+(?:words?|text|content|message)s?|all\s+(?:the\s+)?text)\b[^.\n]{0,15}\b(?:above|before|prior|preceding|earlier)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:repeat|print|output|say|write)\b[^.\n]{0,20}\b(?:everything|the\s+(?:words?|text|content|message)s?|all\s+(?:the\s+)?text)\b[^.\n]{0,15}\b(?:above|before|prior|preceding|earlier)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:repeat|print|output|say|write)\b[^.\n]{0,20}\b(?:everything|the\s+(?:words?|text|content|message)s?|all\s+(?:the\s+)?text)\b[^.\n]{0,15}\b(?:above|before|prior|preceding|earlier)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:repeat|print|output|say|write)\b[^.\n]{0,20}\b(?:everything|the\s+(?:words?|text|content|message)s?|all\s+(?:the\s+)?text)\b[^.\n]{0,15}\b(?:above|before|prior|preceding|earlier)\b'}
+    reason: 'possible system-prompt/instruction extraction — human review'
+    metadata:
+      owasp_llm: LLM01
+      nist_ai_rmf: MEASURE-2.7
+
+  - id: pi-approve-indirect-injection-markers
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)(?:^|\n|>)\s*(?:###\s*(?:system|instruction|new\s+instruction)|system\s*:|assistant\s*:|<!--\s*(?:system|prompt|inject|instruction))'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)(?:^|\n|>)\s*(?:###\s*(?:system|instruction|new\s+instruction)|system\s*:|assistant\s*:|<!--\s*(?:system|prompt|inject|instruction))'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)(?:^|\n|>)\s*(?:###\s*(?:system|instruction|new\s+instruction)|system\s*:|assistant\s*:|<!--\s*(?:system|prompt|inject|instruction))'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)(?:^|\n|>)\s*(?:###\s*(?:system|instruction|new\s+instruction)|system\s*:|assistant\s*:|<!--\s*(?:system|prompt|inject|instruction))'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)(?:^|\n|>)\s*(?:###\s*(?:system|instruction|new\s+instruction)|system\s*:|assistant\s*:|<!--\s*(?:system|prompt|inject|instruction))'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)(?:^|\n|>)\s*(?:###\s*(?:system|instruction|new\s+instruction)|system\s*:|assistant\s*:|<!--\s*(?:system|prompt|inject|instruction))'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)(?:^|\n|>)\s*(?:###\s*(?:system|instruction|new\s+instruction)|system\s*:|assistant\s*:|<!--\s*(?:system|prompt|inject|instruction))'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:important|urgent|attention|critical)\b[^.\n]{0,20}\b(?:instruction|message|note|command)s?\b[^.\n]{0,15}\b(?:for|to)\b[^.\n]{0,10}\b(?:the\s+)?(?:ai|assistant|model|llm|language\s+model|chatbot|agent|system)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:important|urgent|attention|critical)\b[^.\n]{0,20}\b(?:instruction|message|note|command)s?\b[^.\n]{0,15}\b(?:for|to)\b[^.\n]{0,10}\b(?:the\s+)?(?:ai|assistant|model|llm|language\s+model|chatbot|agent|system)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:important|urgent|attention|critical)\b[^.\n]{0,20}\b(?:instruction|message|note|command)s?\b[^.\n]{0,15}\b(?:for|to)\b[^.\n]{0,10}\b(?:the\s+)?(?:ai|assistant|model|llm|language\s+model|chatbot|agent|system)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:important|urgent|attention|critical)\b[^.\n]{0,20}\b(?:instruction|message|note|command)s?\b[^.\n]{0,15}\b(?:for|to)\b[^.\n]{0,10}\b(?:the\s+)?(?:ai|assistant|model|llm|language\s+model|chatbot|agent|system)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:important|urgent|attention|critical)\b[^.\n]{0,20}\b(?:instruction|message|note|command)s?\b[^.\n]{0,15}\b(?:for|to)\b[^.\n]{0,10}\b(?:the\s+)?(?:ai|assistant|model|llm|language\s+model|chatbot|agent|system)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:important|urgent|attention|critical)\b[^.\n]{0,20}\b(?:instruction|message|note|command)s?\b[^.\n]{0,15}\b(?:for|to)\b[^.\n]{0,10}\b(?:the\s+)?(?:ai|assistant|model|llm|language\s+model|chatbot|agent|system)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:important|urgent|attention|critical)\b[^.\n]{0,20}\b(?:instruction|message|note|command)s?\b[^.\n]{0,15}\b(?:for|to)\b[^.\n]{0,10}\b(?:the\s+)?(?:ai|assistant|model|llm|language\s+model|chatbot|agent|system)\b'}
+    reason: 'possible indirect prompt injection markers in content — human review'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-approve-encoding-obfuscation
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:decode|decrypt|deobfuscate|un-?escape|convert)\b[^.\n]{0,25}\b(?:following|below|this|these|the\s+(?:string|text|payload|message))\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:decode|decrypt|deobfuscate|un-?escape|convert)\b[^.\n]{0,25}\b(?:following|below|this|these|the\s+(?:string|text|payload|message))\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:decode|decrypt|deobfuscate|un-?escape|convert)\b[^.\n]{0,25}\b(?:following|below|this|these|the\s+(?:string|text|payload|message))\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:decode|decrypt|deobfuscate|un-?escape|convert)\b[^.\n]{0,25}\b(?:following|below|this|these|the\s+(?:string|text|payload|message))\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:decode|decrypt|deobfuscate|un-?escape|convert)\b[^.\n]{0,25}\b(?:following|below|this|these|the\s+(?:string|text|payload|message))\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:decode|decrypt|deobfuscate|un-?escape|convert)\b[^.\n]{0,25}\b(?:following|below|this|these|the\s+(?:string|text|payload|message))\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:decode|decrypt|deobfuscate|un-?escape|convert)\b[^.\n]{0,25}\b(?:following|below|this|these|the\s+(?:string|text|payload|message))\b'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:base64|b64|rot13|hex(?:adecimal)?)\s*(?:-?\s*)?(?:decode|encoded?|string)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:base64|b64|rot13|hex(?:adecimal)?)\s*(?:-?\s*)?(?:decode|encoded?|string)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:base64|b64|rot13|hex(?:adecimal)?)\s*(?:-?\s*)?(?:decode|encoded?|string)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:base64|b64|rot13|hex(?:adecimal)?)\s*(?:-?\s*)?(?:decode|encoded?|string)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:base64|b64|rot13|hex(?:adecimal)?)\s*(?:-?\s*)?(?:decode|encoded?|string)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:base64|b64|rot13|hex(?:adecimal)?)\s*(?:-?\s*)?(?:decode|encoded?|string)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:base64|b64|rot13|hex(?:adecimal)?)\s*(?:-?\s*)?(?:decode|encoded?|string)\b'}
+    reason: 'possible encoded/obfuscated payload — human review'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-approve-long-base64-blob
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/])'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/])'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/])'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/])'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/])'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/])'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/])'}
+    reason: 'large base64 blob in arguments (possible encoded instructions/payload)'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-approve-markdown-image-exfil
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)!\[[^\]]{0,200}\]\(https?://[^)\s]{1,300}\)'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)!\[[^\]]{0,200}\]\(https?://[^)\s]{1,300}\)'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)!\[[^\]]{0,200}\]\(https?://[^)\s]{1,300}\)'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)!\[[^\]]{0,200}\]\(https?://[^)\s]{1,300}\)'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)!\[[^\]]{0,200}\]\(https?://[^)\s]{1,300}\)'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)!\[[^\]]{0,200}\]\(https?://[^)\s]{1,300}\)'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)!\[[^\]]{0,200}\]\(https?://[^)\s]{1,300}\)'}
+    reason: 'markdown image to external URL (classic data-exfil channel) — human review'
+    metadata:
+      owasp_llm: LLM02
+      nist_ai_rmf: MEASURE-2.7
+
+  - id: pi-approve-zero-width-obfuscation
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '[​‌‍⁠﻿]'}
+        - {op: matches, path: tool.arguments.message, pattern: '[​‌‍⁠﻿]'}
+        - {op: matches, path: tool.arguments.content, pattern: '[​‌‍⁠﻿]'}
+        - {op: matches, path: tool.arguments.text, pattern: '[​‌‍⁠﻿]'}
+        - {op: matches, path: tool.arguments.input, pattern: '[​‌‍⁠﻿]'}
+        - {op: matches, path: tool.arguments.body, pattern: '[​‌‍⁠﻿]'}
+        - {op: matches, path: tool.arguments.query, pattern: '[​‌‍⁠﻿]'}
+    reason: 'zero-width characters in text (possible hidden-instruction smuggling)'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-approve-hypothetical-bypass
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:test|hypothetical|fiction(?:al)?|game|simulation|thought\s+experiment)\b[^.\n]{0,30}\b(?:so\s+)?(?:you\s+can|ignore|bypass|no\s+rules|anything\s+goes|nothing\s+is\s+off)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:test|hypothetical|fiction(?:al)?|game|simulation|thought\s+experiment)\b[^.\n]{0,30}\b(?:so\s+)?(?:you\s+can|ignore|bypass|no\s+rules|anything\s+goes|nothing\s+is\s+off)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:test|hypothetical|fiction(?:al)?|game|simulation|thought\s+experiment)\b[^.\n]{0,30}\b(?:so\s+)?(?:you\s+can|ignore|bypass|no\s+rules|anything\s+goes|nothing\s+is\s+off)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:test|hypothetical|fiction(?:al)?|game|simulation|thought\s+experiment)\b[^.\n]{0,30}\b(?:so\s+)?(?:you\s+can|ignore|bypass|no\s+rules|anything\s+goes|nothing\s+is\s+off)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:test|hypothetical|fiction(?:al)?|game|simulation|thought\s+experiment)\b[^.\n]{0,30}\b(?:so\s+)?(?:you\s+can|ignore|bypass|no\s+rules|anything\s+goes|nothing\s+is\s+off)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:test|hypothetical|fiction(?:al)?|game|simulation|thought\s+experiment)\b[^.\n]{0,30}\b(?:so\s+)?(?:you\s+can|ignore|bypass|no\s+rules|anything\s+goes|nothing\s+is\s+off)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:test|hypothetical|fiction(?:al)?|game|simulation|thought\s+experiment)\b[^.\n]{0,30}\b(?:so\s+)?(?:you\s+can|ignore|bypass|no\s+rules|anything\s+goes|nothing\s+is\s+off)\b'}
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\bas\s+an?\s+(?:ai|assistant|language\s+model)\b[^.\n]{0,20}\byou\s+(?:can|must|should|are\s+able\s+to)\b[^.\n]{0,15}\b(?:ignore|bypass|override|disregard)\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\bas\s+an?\s+(?:ai|assistant|language\s+model)\b[^.\n]{0,20}\byou\s+(?:can|must|should|are\s+able\s+to)\b[^.\n]{0,15}\b(?:ignore|bypass|override|disregard)\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\bas\s+an?\s+(?:ai|assistant|language\s+model)\b[^.\n]{0,20}\byou\s+(?:can|must|should|are\s+able\s+to)\b[^.\n]{0,15}\b(?:ignore|bypass|override|disregard)\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\bas\s+an?\s+(?:ai|assistant|language\s+model)\b[^.\n]{0,20}\byou\s+(?:can|must|should|are\s+able\s+to)\b[^.\n]{0,15}\b(?:ignore|bypass|override|disregard)\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\bas\s+an?\s+(?:ai|assistant|language\s+model)\b[^.\n]{0,20}\byou\s+(?:can|must|should|are\s+able\s+to)\b[^.\n]{0,15}\b(?:ignore|bypass|override|disregard)\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\bas\s+an?\s+(?:ai|assistant|language\s+model)\b[^.\n]{0,20}\byou\s+(?:can|must|should|are\s+able\s+to)\b[^.\n]{0,15}\b(?:ignore|bypass|override|disregard)\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\bas\s+an?\s+(?:ai|assistant|language\s+model)\b[^.\n]{0,20}\byou\s+(?:can|must|should|are\s+able\s+to)\b[^.\n]{0,15}\b(?:ignore|bypass|override|disregard)\b'}
+    reason: 'framing (test/fiction/hypothetical) used to justify ignoring rules — human review'
+    metadata:
+      owasp_llm: LLM01
+
+  - id: pi-approve-credential-disclosure-prompt
+    effect: require_approval
+    when:
+      op: or
+      clauses:
+        - {op: matches, path: tool.arguments.prompt, pattern: '(?i)\b(?:print|output|reveal|show|tell|give|list|display|expose)\b[^.\n]{0,20}\b(?:api\s*key|password|secret|token|credential|private\s+key|env(?:ironment)?\s+variable|access\s+key|session\s+cookie)s?\b'}
+        - {op: matches, path: tool.arguments.message, pattern: '(?i)\b(?:print|output|reveal|show|tell|give|list|display|expose)\b[^.\n]{0,20}\b(?:api\s*key|password|secret|token|credential|private\s+key|env(?:ironment)?\s+variable|access\s+key|session\s+cookie)s?\b'}
+        - {op: matches, path: tool.arguments.content, pattern: '(?i)\b(?:print|output|reveal|show|tell|give|list|display|expose)\b[^.\n]{0,20}\b(?:api\s*key|password|secret|token|credential|private\s+key|env(?:ironment)?\s+variable|access\s+key|session\s+cookie)s?\b'}
+        - {op: matches, path: tool.arguments.text, pattern: '(?i)\b(?:print|output|reveal|show|tell|give|list|display|expose)\b[^.\n]{0,20}\b(?:api\s*key|password|secret|token|credential|private\s+key|env(?:ironment)?\s+variable|access\s+key|session\s+cookie)s?\b'}
+        - {op: matches, path: tool.arguments.input, pattern: '(?i)\b(?:print|output|reveal|show|tell|give|list|display|expose)\b[^.\n]{0,20}\b(?:api\s*key|password|secret|token|credential|private\s+key|env(?:ironment)?\s+variable|access\s+key|session\s+cookie)s?\b'}
+        - {op: matches, path: tool.arguments.body, pattern: '(?i)\b(?:print|output|reveal|show|tell|give|list|display|expose)\b[^.\n]{0,20}\b(?:api\s*key|password|secret|token|credential|private\s+key|env(?:ironment)?\s+variable|access\s+key|session\s+cookie)s?\b'}
+        - {op: matches, path: tool.arguments.query, pattern: '(?i)\b(?:print|output|reveal|show|tell|give|list|display|expose)\b[^.\n]{0,20}\b(?:api\s*key|password|secret|token|credential|private\s+key|env(?:ironment)?\s+variable|access\s+key|session\s+cookie)s?\b'}
+    reason: 'prompt asking to reveal secrets/credentials — human review'
+    metadata:
+      owasp_llm: LLM06
+      nist_ai_rmf: MEASURE-2.7

@@ -28,6 +28,7 @@ from app.models import (
     AlertState,
     MetricEvent,
 )
+from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
 
 def _strip_tz(value: datetime) -> datetime:
@@ -104,6 +105,21 @@ def _aggregate(values: list[float], agg: AlertAggregation) -> float:
             return sorted_vals[min(n - 1, int(0.99 * n))]
 
 
+def _rule_aggregation(rule: AlertRule) -> AlertAggregation:
+    """The aggregation actually used to reduce a group's values.
+
+    ERROR_RATE is the *mean* of the per-event 0/1 error indicator
+    (`_select_metric_value` returns 1.0 for a failed event, 0.0 otherwise),
+    so it is always AVG regardless of the rule's configured aggregation.
+    Everything else uses the rule's aggregation as-is. Centralizing this
+    keeps the fire path and the auto-resolve path from disagreeing about
+    the same group.
+    """
+    if rule.metric is AlertMetric.ERROR_RATE:
+        return AlertAggregation.AVG
+    return rule.aggregation
+
+
 def _compare(value: float, threshold: float, op: AlertComparison) -> bool:
     match op:
         case AlertComparison.GT:
@@ -142,21 +158,28 @@ def evaluate_rule(
     if not rule.enabled:
         return []
     now = now or datetime.now(UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
     since, until = _window_bounds(rule, now)
 
-    # Cooldown: skip if any AlertEvent fired in the last `cooldown_minutes`.
+    # Cooldown is applied per group_key, not rule-wide: a firing in one
+    # group (e.g. model=claude-opus) must not suppress a genuine breach in
+    # a different group (model=claude-sonnet). Build a map of the most
+    # recent firing per group.
+    last_fired_by_group: dict[str | None, datetime] = {}
     if rule.cooldown_minutes > 0:
-        recent = session.execute(
-            select(func.max(AlertEvent.fired_at)).where(
-                AlertEvent.rule_id == rule.id
-            )
-        ).scalar_one_or_none()
-        if recent is not None:
-            if recent.tzinfo is None:
-                recent = recent.replace(tzinfo=UTC)
-            if now - recent < timedelta(minutes=rule.cooldown_minutes):
-                rule.last_evaluated_at = now
-                return []
+        recent_rows = session.execute(
+            select(AlertEvent.group_key, func.max(AlertEvent.fired_at))
+            .where(AlertEvent.rule_id == rule.id)
+            .group_by(AlertEvent.group_key)
+        ).all()
+        for group_key_val, fired_at in recent_rows:
+            if fired_at is None:
+                continue
+            if fired_at.tzinfo is None:
+                fired_at = fired_at.replace(tzinfo=UTC)
+            last_fired_by_group[group_key_val] = fired_at
+    cooldown = timedelta(minutes=rule.cooldown_minutes)
 
     rows = list(session.execute(_filter_stmt(rule, since, until)).scalars())
 
@@ -165,11 +188,8 @@ def evaluate_rule(
     # cooldown window of the new firing isn't fooled by a stale one.
     _auto_resolve_firings(session, rule, rows, now)
 
-    if rule.metric is AlertMetric.ERROR_RATE:
-        # Special handling: ratio of (error count) / (total count).
-        return _eval_error_rate(session, rule, rows, now, http_client)
-
-    # Group + aggregate.
+    # Group + aggregate. ERROR_RATE flows through the same path as every
+    # other metric, reduced with AVG (see `_rule_aggregation`).
     grouped: dict[str | None, list[float]] = {}
     for ev in rows:
         key = _group_key(ev, rule.group_by)
@@ -177,9 +197,13 @@ def evaluate_rule(
 
     fired: list[AlertEvent] = []
     for key, values in grouped.items():
-        agg = _aggregate(values, rule.aggregation)
+        agg = _aggregate(values, _rule_aggregation(rule))
         if not _compare(agg, rule.threshold, rule.comparison):
             continue
+        if rule.cooldown_minutes > 0:
+            last = last_fired_by_group.get(key)
+            if last is not None and now - last < cooldown:
+                continue
         event = AlertEvent(
             organization_id=rule.organization_id,
             rule_id=rule.id,
@@ -227,52 +251,11 @@ def _auto_resolve_firings(
     )
     for fire in open_firings:
         vs = grouped.get(fire.group_key, [])
-        agg = _aggregate(vs, rule.aggregation)
+        agg = _aggregate(vs, _rule_aggregation(rule))
         if not _compare(agg, rule.threshold, rule.comparison):
             fire.state = AlertState.RESOLVED
             fire.resolved_at = now
     session.flush()
-
-
-def _eval_error_rate(
-    session: Session,
-    rule: AlertRule,
-    rows: list[MetricEvent],
-    now: datetime,
-    http_client: httpx.Client | None,
-) -> list[AlertEvent]:
-    grouped: dict[str | None, tuple[int, int]] = {}  # key -> (errors, total)
-    for ev in rows:
-        key = _group_key(ev, rule.group_by)
-        errs, total = grouped.get(key, (0, 0))
-        grouped[key] = (
-            errs + (1 if ev.status != "success" else 0),
-            total + 1,
-        )
-
-    fired: list[AlertEvent] = []
-    for key, (errs, total) in grouped.items():
-        if total == 0:
-            continue
-        rate = errs / total
-        if not _compare(rate, rule.threshold, rule.comparison):
-            continue
-        event = AlertEvent(
-            organization_id=rule.organization_id,
-            rule_id=rule.id,
-            fired_at=now,
-            state=AlertState.FIRING,
-            metric_value=rate,
-            threshold=rule.threshold,
-            group_key=key,
-        )
-        session.add(event)
-        session.flush()
-        _route(event, rule, http_client)
-        fired.append(event)
-    rule.last_evaluated_at = now
-    session.flush()
-    return fired
 
 
 def _route(
@@ -285,6 +268,10 @@ def _route(
     event.payload = payload
     client = http_client or httpx.Client(timeout=10.0)
     try:
+        # SLACK/WEBHOOK POST to the tenant-supplied target URL: re-check it is
+        # not an internal address right before the request (SSRF guard).
+        if rule.channel in (AlertChannel.SLACK, AlertChannel.WEBHOOK):
+            assert_safe_webhook_url(rule.target)
         if rule.channel is AlertChannel.SLACK:
             r = client.post(rule.target, json=payload["slack"])
             r.raise_for_status()
@@ -309,9 +296,14 @@ def _route(
                 "email channel requires an SMTP/SES transport; not bundled in MVP"
             )
         event.delivered = True
-    except Exception as exc:
+    except EgressBlocked:
         event.delivered = False
-        event.delivery_error = f"{type(exc).__name__}: {exc}"
+        event.delivery_error = "delivery blocked: target address not allowed"
+    except Exception:
+        # Do not echo the raw exception: it would be an SSRF oracle (open
+        # ports, connection-refused, internal HTTP status all distinguishable).
+        event.delivered = False
+        event.delivery_error = "delivery failed"
 
 
 def _enum_value(v: Any) -> str:

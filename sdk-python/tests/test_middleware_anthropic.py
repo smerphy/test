@@ -100,11 +100,13 @@ class TestGateBlocks:
         assert out[0]["input"]["__praetor_blocked__"] is True
         assert out[0]["input"]["policy_id"] is None
 
-    def test_malformed_blocks_pass_through(self) -> None:
-        # tool_use missing name
+    def test_malformed_blocks_fail_closed(self) -> None:
+        # A tool_use block with no usable name must be denied, not passed
+        # through unevaluated (that would bypass Praetor entirely).
         block = {"type": "tool_use", "id": "x"}
         out = gate_tool_use_blocks([block], client=_client(), session_id="s")
-        assert out == [block]
+        assert out[0]["input"]["__praetor_blocked__"] is True
+        assert out[0]["input"]["decision"] == "deny"
 
 
 class TestPydanticLikeBlocks:

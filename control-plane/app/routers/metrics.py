@@ -3,23 +3,28 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
+from annotated_types import Len
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
-from app.models import MetricEvent, Organization
+from app.models import MetricEvent, Organization, Role
 from app.schemas import (
     MetricAggregateResponse,
     MetricEventIn,
     MetricEventOut,
     MetricIngestResult,
 )
+from app.services.event_store import archive_events
+from app.services.log_pipeline import publish_metric
 from app.services.metrics import aggregate_metrics, ingest_metric
 from app.services.prometheus_export import render_prometheus
+from app.services.ratelimit import rate_limit
+from app.settings import Settings, get_settings
 
 router = APIRouter(tags=["metrics"])
 
@@ -30,18 +35,30 @@ router = APIRouter(tags=["metrics"])
     status_code=status.HTTP_202_ACCEPTED,
 )
 def ingest_events(
-    events: list[MetricEventIn],
+    events: Annotated[list[MetricEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ingest")),
 ) -> MetricIngestResult:
+    # Log-centric ingest: append to the log; consumers materialize the stores.
+    if settings.ingest_via_log:
+        published = publish_metric(org.id, list(events))
+        return MetricIngestResult(accepted=published, rejected=0, errors=[])
+
     accepted = 0
     errors: list[str] = []
+    archived: list[dict[str, Any]] = []
     for raw in events:
         try:
             ingest_metric(session, org_id=org.id, event=raw)
             accepted += 1
+            archived.append(raw.model_dump(mode="json"))
         except ValueError as exc:
             errors.append(f"{raw.agent_id}@{raw.timestamp.isoformat()}: {exc}")
+    # Stream accepted events to the cold tier (no-op unless configured).
+    archive_events("metric", org.id, archived)
     return MetricIngestResult(
         accepted=accepted, rejected=len(events) - accepted, errors=errors
     )

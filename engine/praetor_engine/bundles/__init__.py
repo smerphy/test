@@ -25,6 +25,7 @@ BUNDLES: dict[str, str] = {
     "iso_42001": "iso_42001.praetor",
     "eu_ai_act": "eu_ai_act.praetor",
     "agent_abuse_patterns": "agent_abuse_patterns.praetor",
+    "prompt_injection": "prompt_injection.praetor",
 }
 
 

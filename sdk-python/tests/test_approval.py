@@ -11,6 +11,7 @@ from praetor_engine.types import AgentInfo, PolicyInput, SessionInfo, ToolCall
 from praetor.approval import (
     ApprovalRegistry,
     ApprovalRequest,
+    ControlPlaneApprovalHandler,
     WebhookApprovalHandler,
 )
 from praetor.errors import ApprovalTimeout
@@ -106,3 +107,60 @@ def test_webhook_failure_raises() -> None:
     )
     with pytest.raises(httpx.HTTPStatusError):
         handler.request_approval(_pi(), policy_id="p1", reason="r")
+
+
+def _cp_client(handler: object) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))  # type: ignore[arg-type]
+
+
+class TestControlPlaneApprovalHandler:
+    def test_approved_after_polling(self) -> None:
+        state = {"gets": 0, "status": "pending"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                assert request.url.path == "/approvals"
+                return httpx.Response(201, json={"id": "appr-1", "status": "pending"})
+            state["gets"] = int(state["gets"]) + 1
+            if int(state["gets"]) >= 2:
+                state["status"] = "approved"
+            return httpx.Response(200, json={"status": state["status"]})
+
+        h = ControlPlaneApprovalHandler(
+            "http://cp",
+            http_client=_cp_client(handler),
+            poll_interval_seconds=0.0,
+            sleep=lambda _s: None,
+        )
+        assert h.request_approval(_pi(), policy_id="p1", reason="r") is True
+        assert int(state["gets"]) >= 2  # actually polled
+
+    def test_denied(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                return httpx.Response(201, json={"id": "x", "status": "pending"})
+            return httpx.Response(200, json={"status": "denied"})
+
+        h = ControlPlaneApprovalHandler(
+            "http://cp", http_client=_cp_client(handler), sleep=lambda _s: None
+        )
+        assert h.request_approval(_pi(), policy_id=None, reason="r") is False
+
+    def test_timeout_raises(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                return httpx.Response(201, json={"id": "x", "status": "pending"})
+            return httpx.Response(200, json={"status": "pending"})
+
+        clock = {"t": 0.0}
+
+        h = ControlPlaneApprovalHandler(
+            "http://cp",
+            http_client=_cp_client(handler),
+            timeout_seconds=10.0,
+            poll_interval_seconds=1.0,
+            monotonic=lambda: clock["t"],
+            sleep=lambda _s: clock.__setitem__("t", clock["t"] + 100),
+        )
+        with pytest.raises(ApprovalTimeout):
+            h.request_approval(_pi(), policy_id=None, reason="r")

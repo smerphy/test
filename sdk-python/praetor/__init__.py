@@ -2,6 +2,7 @@ from praetor.approval import (
     ApprovalHandler,
     ApprovalRegistry,
     ApprovalRequest,
+    ControlPlaneApprovalHandler,
     WebhookApprovalHandler,
 )
 from praetor.audit import (
@@ -25,19 +26,21 @@ from praetor.monitor import (
     NullMetricSink,
     compute_cost_usd,
 )
+from praetor.quarantine import QuarantineGuard
 from praetor.transport import HttpTransport
 
 __all__ = [
     "AnthropicMonitor",
-    "AsyncAnthropicMonitor",
     "ApprovalHandler",
     "ApprovalRegistry",
     "ApprovalRequest",
     "ApprovalTimeout",
+    "AsyncAnthropicMonitor",
     "AuditError",
     "AuditEvent",
     "AuditSink",
     "CallbackMetricSink",
+    "ControlPlaneApprovalHandler",
     "ControlPlaneMetricSink",
     "HttpTransport",
     "JsonlAuditSink",
@@ -48,6 +51,7 @@ __all__ = [
     "PolicyDenied",
     "PraetorClient",
     "PraetorError",
+    "QuarantineGuard",
     "RemoteShipper",
     "Transport",
     "WebhookApprovalHandler",

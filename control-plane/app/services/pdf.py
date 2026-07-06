@@ -110,8 +110,8 @@ def render_report_pdf(report: ComplianceReport) -> bytes:
     story.append(
         Paragraph(
             "<i>This report is generated from Praetor audit events. Each "
-            "tool-call decision is signed and chained; the events backing "
-            "this summary can be re-verified via "
+            "tool-call decision is recorded in a SHA-256 hash chain; the "
+            "events backing this summary can be re-verified for continuity via "
             "<font face='Courier'>praetor.verify_chain</font>.</i>",
             styles["Normal"],
         )

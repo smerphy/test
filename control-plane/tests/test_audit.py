@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi.testclient import TestClient
+from praetor_engine.audit_hash import compute_hash as _canonical_hash
 
 from app.schemas import AuditEventIn
-from app.services.audit_ingest import _canonical_hash
 
 GENESIS = "0" * 64
 
@@ -61,6 +61,48 @@ def test_ingest_chain_continuity(client: TestClient) -> None:
     e1 = _event(seq=1, prev_hash=e0["hash"])
     r = client.post("/audit/events", json=[e1])
     assert r.json()["accepted"] == 1
+
+
+def test_ingest_interleaved_sessions_each_own_chain(client: TestClient) -> None:
+    # The SDK writes one file with independent per-(agent, session) chains,
+    # so a shipped batch interleaves sessions and each session's seq restarts
+    # at 0 off genesis. Ingest must verify them as separate chains, not reject
+    # the second session for "seq mismatch: expected 0, got N".
+    a0 = _event(seq=0, prev_hash=GENESIS, agent_id="agent-A", session_id="s1")
+    b0 = _event(seq=0, prev_hash=GENESIS, agent_id="agent-B", session_id="s2")
+    a1 = _event(seq=1, prev_hash=a0["hash"], agent_id="agent-A", session_id="s1")
+    b1 = _event(seq=1, prev_hash=b0["hash"], agent_id="agent-B", session_id="s2")
+    r = client.post("/audit/events", json=[a0, b0, a1, b1])
+    assert r.status_code == 202
+    assert r.json() == {"accepted": 4, "rejected": 0, "errors": []}
+
+
+def test_ingest_batch_size_is_capped(client: TestClient) -> None:
+    # Oversized batches are rejected (DoS guard) before any per-row work.
+    minimal = {
+        "seq": 0,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "agent_id": "a",
+        "session_id": "s",
+        "tool_name": "t",
+        "tool_arguments": {},
+        "decision": "allow",
+        "reason": "r",
+        "evaluator_version": "0.1.0",
+        "prev_hash": "0" * 64,
+        "hash": "0" * 64,
+    }
+    r = client.post("/audit/events", json=[minimal] * 1001)
+    assert r.status_code == 422
+
+
+def test_ingest_rejects_unknown_decision_value(client: TestClient) -> None:
+    # decision is validated against the engine Decision enum, so a bogus
+    # value is a 422 at the boundary rather than an accepted arbitrary string.
+    ev = _event(seq=0, prev_hash=GENESIS)
+    ev["decision"] = "banana"
+    r = client.post("/audit/events", json=[ev])
+    assert r.status_code == 422
 
 
 def test_ingest_broken_prev_hash_rejected(client: TestClient) -> None:

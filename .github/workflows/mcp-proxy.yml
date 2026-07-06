@@ -1,0 +1,41 @@
+name: mcp-proxy
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: mcp-proxy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-proxy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        working-directory: .
+        run: uv sync --package praetor-mcp --extra dev
+
+      - name: Ruff
+        run: uv run ruff check praetor_mcp tests
+
+      - name: Mypy (strict)
+        run: uv run mypy praetor_mcp
+
+      - name: Pytest with coverage gate (>=90%)
+        run: uv run pytest --cov=praetor_mcp --cov-report=term-missing --cov-fail-under=90

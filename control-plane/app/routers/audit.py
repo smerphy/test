@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, status
+from annotated_types import Len
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
-from app.models import AuditEvent, Organization
-from app.schemas import AuditEventIn, AuditEventOut, AuditIngestResult
+from app.models import AuditAnchor, AuditEvent, Organization, Role
+from app.schemas import (
+    AuditAnchorOut,
+    AuditEventIn,
+    AuditEventOut,
+    AuditIngestResult,
+    AuditVerifyOut,
+)
+from app.services.access_log import access_log
+from app.services.anchoring import create_anchor, verify_latest
 from app.services.audit_ingest import ingest_event
+from app.services.log_pipeline import publish_audit
+from app.services.ratelimit import rate_limit
+from app.settings import Settings, get_settings
 
 router = APIRouter(tags=["audit"])
 
@@ -24,10 +36,20 @@ router = APIRouter(tags=["audit"])
     status_code=status.HTTP_202_ACCEPTED,
 )
 def ingest_events(
-    events: list[AuditEventIn],
+    events: Annotated[list[AuditEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
+    _rl: None = Depends(rate_limit("ingest")),
 ) -> AuditIngestResult:
+    # Log-centric ingest: append to the durable log and return immediately;
+    # the hot-store + analytics consumer groups materialize the stores off the
+    # request path (chain verification + dedup happen in the hot materializer).
+    if settings.ingest_via_log:
+        published = publish_audit(org.id, list(events))
+        return AuditIngestResult(accepted=published, rejected=0, errors=[])
+
     accepted = 0
     errors: list[str] = []
     for raw in events:
@@ -36,6 +58,9 @@ def ingest_events(
             accepted += 1
         except ValueError as exc:
             errors.append(f"seq={raw.seq}: {exc}")
+    # Archival to the cold tier is driven reliably from committed rows by the
+    # `praetor.audit.archive` task (POST /telemetry/archive/run to force one),
+    # not best-effort from this request — see app.services.archive.
     return AuditIngestResult(
         accepted=accepted, rejected=len(events) - accepted, errors=errors
     )
@@ -45,6 +70,7 @@ def ingest_events(
 def search_events(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _al: None = Depends(access_log("audit")),
     agent_id: str | None = None,
     tool_name: str | None = None,
     decision: str | None = None,
@@ -77,3 +103,78 @@ def search_events(
     if until:
         stmt = stmt.where(AuditEvent.timestamp <= until)
     return list(session.execute(stmt).scalars().all())
+
+
+@router.post("/audit/anchor", response_model=AuditAnchorOut)
+def anchor_now(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+) -> AuditAnchor:
+    """Snapshot the audit chain heads into an immutable, externally-published
+    anchor (tamper-evidence that survives a DB compromise)."""
+    return create_anchor(session, org)
+
+
+@router.get("/audit/anchors", response_model=list[AuditAnchorOut])
+def list_anchors(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[AuditAnchor]:
+    return list(
+        session.execute(
+            select(AuditAnchor)
+            .where(AuditAnchor.organization_id == org.id)
+            .order_by(AuditAnchor.created_at.desc())
+            .limit(limit)
+        ).scalars()
+    )
+
+
+@router.get("/audit/verify", response_model=AuditVerifyOut)
+def verify_audit(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+) -> dict[str, Any]:
+    """Re-derive the audit chain heads and check them against the latest
+    anchor. `tampered=true` means an anchored event was altered or removed."""
+    return verify_latest(session, org.id)
+
+
+@router.get("/audit/export")
+def export_audit(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
+    _al: None = Depends(access_log("audit", "export")),
+    limit: Annotated[int, Query(ge=1, le=100_000)] = 10_000,
+) -> Response:
+    """Stream the full audit chain as NDJSON for independent verification.
+    The latest anchor root is returned in the `X-Praetor-Audit-Root` header."""
+    events = list(
+        session.execute(
+            select(AuditEvent)
+            .where(AuditEvent.organization_id == org.id)
+            .order_by(AuditEvent.agent_id, AuditEvent.session_id, AuditEvent.seq)
+            .limit(limit)
+        ).scalars()
+    )
+    body = "\n".join(
+        AuditEventOut.model_validate(e).model_dump_json() for e in events
+    )
+    latest = session.execute(
+        select(AuditAnchor.root)
+        .where(AuditAnchor.organization_id == org.id)
+        .order_by(AuditAnchor.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return Response(
+        content=body,
+        media_type="application/x-ndjson",
+        headers={
+            "X-Praetor-Audit-Root": latest or "",
+            "Content-Disposition": "attachment; filename=praetor-audit-export.ndjson",
+        },
+    )

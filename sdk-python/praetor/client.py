@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import httpx
+from praetor_engine import __version__ as _ENGINE_VERSION
 from praetor_engine.evaluator import Evaluator, Policy
 from praetor_engine.parser import parse_bundle_file
 from praetor_engine.types import (
@@ -17,10 +20,11 @@ from praetor_engine.types import (
     ToolCall,
 )
 
-from praetor.approval import ApprovalHandler
+from praetor.approval import ApprovalHandler, ControlPlaneApprovalHandler
 from praetor.audit import AuditSink, JsonlAuditSink, NullAuditSink, RemoteShipper
 from praetor.errors import PolicyDenied
-from praetor.transport import HttpTransport
+from praetor.quarantine import QuarantineGuard
+from praetor.transport import HttpTransport, praetor_headers
 
 
 class PraetorClient:
@@ -38,14 +42,18 @@ class PraetorClient:
         self,
         *,
         policies: Sequence[Policy] | None = None,
-        bundle_path: Path | None = None,
+        bundle_path: Path | str | None = None,
         audit_sink: AuditSink | None = None,
-        audit_log_path: Path | None = None,
+        audit_log_path: Path | str | None = None,
         control_plane_url: str | None = None,
         api_key: str | None = None,
         org_slug: str | None = None,
         approval_handler: ApprovalHandler | None = None,
         default_agent_id: str | None = None,
+        enable_quarantine: bool = True,
+        redact_pii: bool = False,
+        audit_group_commit: int = 1,
+        ship_batch_size: int = 100,
     ) -> None:
         if policies is not None and bundle_path is not None:
             raise ValueError("pass policies or bundle_path, not both")
@@ -62,12 +70,36 @@ class PraetorClient:
         if audit_sink is not None:
             self._audit = audit_sink
         elif audit_log_path is not None:
-            self._audit = JsonlAuditSink(audit_log_path)
+            # Redact PII pre-hash so tamper-evidence still holds. Callers who
+            # pass their own audit_sink control redaction on that sink.
+            self._audit = JsonlAuditSink(
+                audit_log_path,
+                redact_pii=redact_pii,
+                group_commit=audit_group_commit,
+            )
         else:
             self._audit = NullAuditSink()
 
-        self._approval = approval_handler
         self._default_agent_id = default_agent_id
+
+        # Approval handler resolution: an explicit handler wins; otherwise, if
+        # a control plane is configured, default to brokering approvals through
+        # it (create + poll) so `require_approval` actually resolves. With no
+        # handler and no control plane, `require_approval` falls back to deny.
+        self._approval = approval_handler
+        if self._approval is None and control_plane_url is not None:
+            self._approval = ControlPlaneApprovalHandler(
+                control_plane_url, api_key=api_key, org_slug=org_slug
+            )
+
+        # EDR kill-switch: when a control plane is configured, consult active
+        # quarantines before evaluating policy so an isolated agent/session is
+        # denied inline.
+        self._quarantine: QuarantineGuard | None = None
+        if control_plane_url is not None and enable_quarantine:
+            self._quarantine = QuarantineGuard(
+                control_plane_url, api_key=api_key, org_slug=org_slug
+            )
 
         # Optional control-plane shipping. Requires a local JsonlAuditSink
         # to tail; raise loudly if the caller wired this without one.
@@ -82,17 +114,97 @@ class PraetorClient:
                 control_plane_url, api_key=api_key, org_slug=org_slug
             )
             offset = self._audit.path.with_suffix(self._audit.path.suffix + ".offset")
-            self._shipper = RemoteShipper(self._audit, transport, offset_path=offset)
+            self._shipper = RemoteShipper(
+                self._audit, transport, offset_path=offset, batch_size=ship_batch_size
+            )
             self._shipper.start()
+
+        # Fleet enrollment: register this sensor with the control plane.
+        self._heartbeat_url: str | None = None
+        self._heartbeat_headers: dict[str, str] = {}
+        self._heartbeat_client: httpx.Client | None = None
+        self._control_plane_base: str | None = None
+        if control_plane_url is not None:
+            self._control_plane_base = control_plane_url.rstrip("/")
+            self._heartbeat_url = self._control_plane_base + "/agents/heartbeat"
+            self._heartbeat_headers = praetor_headers(api_key, org_slug)
+            self._heartbeat_client = httpx.Client(timeout=10.0)
+            if default_agent_id is not None:
+                self.heartbeat()  # enroll on start (best-effort)
+
+    def heartbeat(
+        self,
+        agent_id: str | None = None,
+        *,
+        name: str | None = None,
+        agent_version: str | None = None,
+    ) -> None:
+        """Report this sensor to the control plane (enroll / refresh last-seen).
+        Best-effort — never raises."""
+        if self._heartbeat_url is None or self._heartbeat_client is None:
+            return
+        resolved = agent_id or self._default_agent_id
+        if not resolved:
+            return
+        with contextlib.suppress(Exception):
+            self._heartbeat_client.post(
+                self._heartbeat_url,
+                headers=self._heartbeat_headers,
+                json={
+                    "agent_id": resolved,
+                    "name": name,
+                    "agent_version": agent_version,
+                    "sdk_version": _ENGINE_VERSION,
+                },
+            )
+
+    def report_finding(
+        self,
+        observation: str,
+        *,
+        category: str | None = None,
+        suggested_severity: str | None = None,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        evidence: dict[str, Any] | None = None,
+    ) -> None:
+        """Report a security observation the agent found — even incidentally.
+
+        The control plane's AI triage panel scores it by severity/impact/
+        fidelity and files it in the findings dashboard. Best-effort — never
+        raises; a no-op without a control-plane URL.
+        """
+        if self._control_plane_base is None or self._heartbeat_client is None:
+            return
+        body: dict[str, Any] = {"observation": observation}
+        resolved = agent_id or self._default_agent_id
+        if resolved:
+            body["agent_id"] = resolved
+        if session_id:
+            body["session_id"] = session_id
+        if category:
+            body["category"] = category
+        if suggested_severity:
+            body["suggested_severity"] = suggested_severity
+        if evidence:
+            body["evidence"] = evidence
+        with contextlib.suppress(Exception):
+            self._heartbeat_client.post(
+                self._control_plane_base + "/findings/report",
+                headers=self._heartbeat_headers,
+                json=body,
+            )
 
     @property
     def shipper(self) -> RemoteShipper | None:
         return self._shipper
 
     def stop(self) -> None:
-        """Stop background workers (audit shipper). Safe to call repeatedly."""
+        """Stop background workers (audit shipper) and flush the audit sink's
+        group-commit tail. Safe to call repeatedly."""
         if self._shipper is not None:
             self._shipper.stop()
+        self._audit.close()
 
     @property
     def policies(self) -> tuple[Policy, ...]:
@@ -133,6 +245,19 @@ class PraetorClient:
             session=SessionInfo(id=session_id),
             context=dict(context or {}),
         )
+
+        # EDR kill-switch: a quarantined agent/session is denied before policy
+        # evaluation. Still audited so the isolation is on the record.
+        if self._quarantine is not None:
+            reason = self._quarantine.check(resolved_agent_id, session_id)
+            if reason is not None:
+                result = DecisionResult(
+                    decision=Decision.DENY,
+                    reason=f"quarantined: {reason}",
+                    matched_policy_id="__quarantine__",
+                )
+                self._audit.record(policy_input, result)
+                return result
 
         result = self._evaluator.evaluate(policy_input)
 

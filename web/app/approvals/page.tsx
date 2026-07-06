@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
 import { api, type ApprovalRequest } from "@/lib/api";
+import { roleAtLeast } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,14 @@ async function resolveAction(formData: FormData): Promise<void> {
 export default async function ApprovalsPage() {
   let approvals: ApprovalRequest[] = [];
   let error: string | null = null;
+  let canResolve = false;
   try {
-    approvals = await api.listApprovals("pending");
+    const [list, me] = await Promise.all([
+      api.listApprovals("pending"),
+      api.whoami(),
+    ]);
+    approvals = list;
+    canResolve = roleAtLeast(me.role, "analyst");
   } catch (e) {
     error = (e as Error).message;
   }
@@ -64,35 +71,41 @@ export default async function ApprovalsPage() {
                 </pre>
               </div>
 
-              <form
-                action={resolveAction}
-                className="flex shrink-0 flex-col gap-2"
-              >
-                <input type="hidden" name="id" value={a.id} />
-                <input
-                  name="resolved_by"
-                  placeholder="your email"
-                  className="rounded border border-border bg-background px-2 py-1 text-xs"
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    name="decision"
-                    value="approve"
-                    className="rounded bg-success px-3 py-1.5 text-xs font-medium text-background hover:opacity-90"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="submit"
-                    name="decision"
-                    value="deny"
-                    className="rounded bg-danger px-3 py-1.5 text-xs font-medium text-background hover:opacity-90"
-                  >
-                    Deny
-                  </button>
-                </div>
-              </form>
+              {canResolve ? (
+                <form
+                  action={resolveAction}
+                  className="flex shrink-0 flex-col gap-2"
+                >
+                  <input type="hidden" name="id" value={a.id} />
+                  <input
+                    name="resolved_by"
+                    placeholder="your email"
+                    className="rounded border border-border bg-background px-2 py-1 text-xs"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      name="decision"
+                      value="approve"
+                      className="rounded bg-success px-3 py-1.5 text-xs font-medium text-background hover:opacity-90"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="submit"
+                      name="decision"
+                      value="deny"
+                      className="rounded bg-danger px-3 py-1.5 text-xs font-medium text-background hover:opacity-90"
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <p className="shrink-0 text-xs text-foreground/50">
+                  Requires the analyst role to resolve.
+                </p>
+              )}
             </div>
           </Card>
         ))

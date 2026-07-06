@@ -96,7 +96,7 @@ export interface ComplianceReport {
   created_at: string;
 }
 
-type Method = "GET" | "POST";
+type Method = "GET" | "POST" | "PATCH";
 
 async function call<T>(
   path: string,
@@ -135,6 +135,12 @@ export const api = {
       method: "POST",
       body,
     }),
+  backtestPolicy: (body: {
+    yaml_text: string;
+    since?: string;
+    until?: string;
+    limit?: number;
+  }) => call<BacktestReport>("/policies/backtest", { method: "POST", body }),
   searchAudit: (params: Record<string, string | undefined>) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
@@ -182,7 +188,365 @@ export const api = {
       method: "POST",
       body: { acknowledged_by, note },
     }),
+
+  // SIEM / EDR
+  getOverview: () => call<SecurityOverview>("/overview"),
+  listFindings: (params: Record<string, string | undefined> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    const path = qs.toString() ? `/findings?${qs.toString()}` : "/findings";
+    return call<Finding[]>(path);
+  },
+  updateFinding: (id: string, body: Partial<{ status: string; assignee: string; note: string; resolved_by: string }>) =>
+    call<Finding>(`/findings/${id}`, { method: "PATCH", body }),
+  sweepFindings: () =>
+    call<Record<string, number>>("/findings/sweep", { method: "POST" }),
+  listAgents: () => call<Agent[]>("/agents"),
+  listQuarantines: () => call<Quarantine[]>("/quarantines/active"),
+  liftQuarantine: (id: string) =>
+    call<Quarantine>(`/quarantines/${id}/lift`, { method: "POST" }),
+
+  // RBAC
+  whoami: () => call<WhoAmI>("/whoami"),
+  listMembers: () => call<Member[]>("/users"),
+  updateMember: (id: string, body: { role?: Role; name?: string }) =>
+    call<Member>(`/users/${id}`, { method: "PATCH", body }),
+
+  // AI-native advisory
+  getAIConfig: () => call<AIConfig>("/ai/config"),
+  updateAIConfig: (body: Partial<AIConfigUpdate>) =>
+    call<AIConfig>("/ai/config", { method: "PATCH", body }),
+  suggestRules: () =>
+    call<RuleSuggestion[]>("/ai/rules/suggest", { method: "POST" }),
+  listSuggestions: (status?: string) =>
+    call<RuleSuggestion[]>(
+      status ? `/ai/rules/suggestions?status=${status}` : "/ai/rules/suggestions"
+    ),
+  acceptSuggestion: (id: string, reviewed_by?: string) =>
+    call<RuleSuggestion>(`/ai/rules/suggestions/${id}/accept`, {
+      method: "POST",
+      body: { reviewed_by },
+    }),
+  rejectSuggestion: (id: string, reviewed_by?: string) =>
+    call<RuleSuggestion>(`/ai/rules/suggestions/${id}/reject`, {
+      method: "POST",
+      body: { reviewed_by },
+    }),
+
+  // Event store / telemetry
+  getTelemetryStats: () => call<TelemetryStats>("/telemetry/stats"),
+
+  // FinOps / financial tracking
+  getCostSummary: (params: Record<string, string | undefined> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    const path = qs.toString()
+      ? `/finance/summary?${qs.toString()}`
+      : "/finance/summary";
+    return call<CostSummary>(path);
+  },
+  getBudgetStatus: () => call<BudgetStatus>("/finance/budget"),
+  setCostBudget: (monthly_cost_budget_usd: number | null) =>
+    call<{ monthly_cost_budget_usd: number | null }>("/org", {
+      method: "PATCH",
+      body: { monthly_cost_budget_usd },
+    }),
+
+  // Threat intelligence
+  listFeeds: () => call<ThreatFeed[]>("/threat/feeds"),
+  createFeed: (body: {
+    name: string;
+    format: string;
+    url?: string;
+    default_indicator_type?: string;
+    description?: string;
+  }) => call<ThreatFeed>("/threat/feeds", { method: "POST", body }),
+  syncFeed: (id: string) =>
+    call<FeedSyncResult>(`/threat/feeds/${id}/sync`, { method: "POST" }),
+  listIndicators: (params: Record<string, string | undefined> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, v);
+    }
+    const path = qs.toString()
+      ? `/threat/indicators?${qs.toString()}`
+      : "/threat/indicators";
+    return call<ThreatIndicator[]>(path);
+  },
+  createIndicator: (body: {
+    type: string;
+    value: string;
+    severity?: string;
+    confidence?: number;
+    description?: string;
+  }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
 };
+
+export interface BacktestExample {
+  event_id: string;
+  timestamp: string;
+  agent_id: string;
+  tool_name: string;
+  old_decision: string;
+  new_decision: string;
+  new_reason: string;
+  new_policy_id: string | null;
+}
+
+export interface BacktestReport {
+  evaluated: number;
+  since: string | null;
+  until: string | null;
+  summary: {
+    unchanged: number;
+    changed: number;
+    newly_denied: number;
+    newly_allowed: number;
+    more_restrictive: number;
+    less_restrictive: number;
+  };
+  transitions: Record<string, number>;
+  examples: BacktestExample[];
+}
+
+export interface AIConfig {
+  ai_enabled: boolean;
+  ai_mode: string;
+  ai_provider: string;
+  ai_model: string;
+  ai_base_url: string | null;
+  ai_key_set: boolean;
+}
+
+export interface AIConfigUpdate {
+  ai_enabled: boolean;
+  ai_mode: string;
+  ai_provider: string;
+  ai_model: string;
+  ai_base_url: string;
+  ai_api_key: string;
+}
+
+export interface RuleSuggestion {
+  id: string;
+  title: string;
+  rationale: string;
+  severity: FindingSeverity;
+  category: string;
+  spec: Record<string, unknown>;
+  atlas_technique: string | null;
+  owasp_llm: string | null;
+  confidence: number;
+  source: string;
+  status: string;
+  reviewed_by: string | null;
+  created_rule_id: string | null;
+  created_at: string;
+}
+
+export interface CostBreakdownItem {
+  key: string;
+  cost_usd: number;
+  calls: number;
+  total_tokens: number;
+  errors: number;
+  share: number;
+}
+
+export interface CostSummary {
+  since: string;
+  until: string;
+  total: {
+    cost_usd: number;
+    calls: number;
+    total_tokens: number;
+    errors: number;
+    error_rate: number;
+    avg_cost_per_call: number;
+  };
+  by_model: CostBreakdownItem[];
+  by_agent: CostBreakdownItem[];
+  by_project: CostBreakdownItem[];
+  daily: { day: string; cost_usd: number; calls: number; total_tokens: number }[];
+}
+
+export interface BudgetStatus {
+  month: string;
+  agent_spend_usd: number;
+  budget_usd: number | null;
+  pct_used: number | null;
+  projected_month_usd: number;
+  forecast_over_budget: boolean;
+  daily_burn_usd: number;
+  days_elapsed: number;
+  days_in_month: number;
+  advisory_spend_usd: number;
+  advisory_budget_usd: number | null;
+}
+
+export interface TelemetryStats {
+  hot_audit_events: number;
+  hot_metric_events: number;
+  oldest_hot_event: string | null;
+  newest_hot_event: string | null;
+  rollup_events_total: number;
+  rollup_days: number;
+  rollup_oldest_day: string | null;
+  archive_enabled: boolean;
+  retention_days: number | null;
+}
+
+export type IndicatorType =
+  | "domain"
+  | "ip"
+  | "url"
+  | "sha256"
+  | "md5"
+  | "email"
+  | "tool_name"
+  | "package"
+  | "prompt_signature"
+  | "regex";
+
+export type FeedFormat = "json" | "csv" | "plaintext" | "stix" | "misp";
+
+export interface ThreatFeed {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  url: string | null;
+  format: FeedFormat;
+  default_indicator_type: IndicatorType | null;
+  enabled: boolean;
+  tlp: string;
+  default_confidence: number;
+  default_severity: string;
+  refresh_minutes: number;
+  last_synced_at: string | null;
+  last_status: string;
+  last_error: string | null;
+  indicator_count: number;
+  created_at: string;
+}
+
+export interface FeedSyncResult {
+  created: number;
+  updated: number;
+  status: string;
+  error: string | null;
+}
+
+export interface ThreatIndicator {
+  id: string;
+  organization_id: string;
+  feed_id: string | null;
+  type: IndicatorType;
+  value: string;
+  confidence: number;
+  severity: FindingSeverity;
+  tags: string[];
+  references: string[];
+  description: string | null;
+  tlp: string;
+  enabled: boolean;
+  first_seen: string;
+  last_seen: string;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export type Role = "viewer" | "analyst" | "admin" | "owner";
+
+export interface WhoAmI {
+  kind: "user" | "api_key";
+  role: Role;
+  organization_id: string;
+  organization_slug: string;
+  user_id: string | null;
+  email: string | null;
+  name: string | null;
+}
+
+export interface Member {
+  id: string;
+  email: string;
+  name: string | null;
+  role: Role;
+  organization_id: string;
+  created_at: string;
+}
+
+export type FindingSeverity = "info" | "low" | "medium" | "high" | "critical";
+export type FindingStatus = "open" | "triaging" | "resolved" | "false_positive";
+
+export interface Finding {
+  id: string;
+  rule_id: string;
+  title: string;
+  severity: FindingSeverity;
+  category: string;
+  status: FindingStatus;
+  source: string;
+  impact: string;
+  fidelity: number;
+  risk_score: number;
+  agent_id: string | null;
+  session_id: string | null;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  evidence: Record<string, unknown>;
+  atlas_technique: string | null;
+  owasp_llm: string | null;
+  assignee: string | null;
+  note: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  created_at: string;
+}
+
+export interface SecurityOverview {
+  findings: {
+    open_total: number;
+    critical_open: number;
+    by_severity: Record<string, number>;
+    by_category: Record<string, number>;
+  };
+  quarantines: { active: number };
+  approvals: { pending: number };
+  activity_24h: { decisions: Record<string, number>; total: number };
+}
+
+export interface Agent {
+  id: string;
+  agent_id: string;
+  name: string | null;
+  agent_version: string | null;
+  sdk_version: string | null;
+  first_seen: string;
+  last_seen: string;
+  health: string;
+}
+
+export interface Quarantine {
+  id: string;
+  agent_id: string | null;
+  session_id: string | null;
+  reason: string;
+  source: string;
+  finding_id: string | null;
+  active: boolean;
+  expires_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  lifted_at: string | null;
+  lifted_by: string | null;
+}
 
 export interface MetricBucket {
   bucket_start: string;

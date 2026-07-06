@@ -9,9 +9,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import current_org
+from app.auth import Principal, current_org, require_role
 from app.db import get_session
-from app.models import AlertEvent, AlertRule, AlertState, Organization
+from app.deps import get_owned
+from app.models import (
+    AlertChannel,
+    AlertEvent,
+    AlertRule,
+    AlertState,
+    Organization,
+    Role,
+)
 from app.schemas import (
     AlertAcknowledgeIn,
     AlertEventOut,
@@ -19,6 +27,7 @@ from app.schemas import (
     AlertRuleOut,
 )
 from app.services.alerts import evaluate_rule
+from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
 router = APIRouter(tags=["alerts"])
 
@@ -32,7 +41,19 @@ def create_rule(
     body: AlertRuleIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> AlertRule:
+    # SLACK/WEBHOOK targets are URLs the control plane POSTs to; reject
+    # internal addresses up front (SSRF guard). PagerDuty target is a routing
+    # key, not a URL.
+    if body.channel in (AlertChannel.SLACK, AlertChannel.WEBHOOK):
+        try:
+            assert_safe_webhook_url(body.target)
+        except EgressBlocked as exc:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"target rejected: {exc}",
+            ) from exc
     rule = AlertRule(
         organization_id=org.id,
         name=body.name,
@@ -75,10 +96,7 @@ def get_rule(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> AlertRule:
-    rule = session.get(AlertRule, rule_id)
-    if rule is None or rule.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="rule not found")
-    return rule
+    return get_owned(session, AlertRule, rule_id, org, detail="rule not found")
 
 
 @router.post("/alerts/rules/{rule_id}/evaluate", response_model=list[AlertEventOut])
@@ -86,10 +104,9 @@ def evaluate_now(
     rule_id: str,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> list[AlertEvent]:
-    rule = session.get(AlertRule, rule_id)
-    if rule is None or rule.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="rule not found")
+    rule = get_owned(session, AlertRule, rule_id, org, detail="rule not found")
     return evaluate_rule(session, rule)
 
 
@@ -101,10 +118,11 @@ def acknowledge_event(
     body: AlertAcknowledgeIn,
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
 ) -> AlertEvent:
-    event = session.get(AlertEvent, event_id)
-    if event is None or event.organization_id != org.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="alert event not found")
+    event = get_owned(
+        session, AlertEvent, event_id, org, detail="alert event not found"
+    )
     if event.state is AlertState.RESOLVED:
         raise HTTPException(
             status.HTTP_409_CONFLICT,

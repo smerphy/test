@@ -19,6 +19,20 @@ from app.schemas import MetricBucket, MetricEventIn
 from app.services.cost import compute_cost_usd
 
 
+def _to_utc(ts: datetime) -> datetime:
+    """Normalize a timestamp to UTC before storage.
+
+    The `MetricEvent.timestamp` column is `DateTime(timezone=True)`, but
+    SQLite drops the offset on write *without* converting to UTC, so a
+    non-UTC aware timestamp would be persisted at the wrong instant and
+    skew every window query, bucket, and alert. Convert here so the stored
+    wall-clock value is always UTC. Naive input is assumed to already be UTC.
+    """
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=UTC)
+    return ts.astimezone(UTC)
+
+
 def ingest_metric(
     session: Session, *, org_id: str, event: MetricEventIn
 ) -> MetricEvent:
@@ -33,7 +47,7 @@ def ingest_metric(
         )
     row = MetricEvent(
         organization_id=org_id,
-        timestamp=event.timestamp,
+        timestamp=_to_utc(event.timestamp),
         agent_id=event.agent_id,
         session_id=event.session_id,
         model=event.model,

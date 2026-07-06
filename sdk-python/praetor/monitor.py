@@ -17,6 +17,7 @@ then re-raised. The monitor never swallows the underlying error.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -26,48 +27,12 @@ from typing import Any, Protocol
 
 import httpx
 
-# Per-million-token prices. Override via `PRAETOR_CLAUDE_PRICE_BOOK_JSON`
-# (same format the control plane reads).
-_DEFAULT_PRICES: dict[str, dict[str, float]] = {
-    "claude-opus-4-8": {"input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75},
-    "claude-opus-4-7": {"input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75},
-    "claude-opus-4-6": {"input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75},
-    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75},
-    "claude-sonnet-4-5": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75},
-    "claude-haiku-4-5-20251001": {
-        "input": 0.8, "output": 4.0, "cache_read": 0.08, "cache_write": 1.0,
-    },
-    "claude-haiku-4-5": {"input": 0.8, "output": 4.0, "cache_read": 0.08, "cache_write": 1.0},
-}
+# Price book + cost computation are shared with the control plane via
+# praetor_engine.pricing (one price table, one PRAETOR_CLAUDE_PRICE_BOOK_JSON
+# override read in one place — the SDK previously ignored that env var).
+from praetor_engine.pricing import compute_cost_usd
 
-
-def _lookup(model: str, book: dict[str, dict[str, float]]) -> dict[str, float] | None:
-    if model in book:
-        return book[model]
-    parts = model.rsplit("-", 1)
-    if len(parts) == 2 and parts[1].isdigit() and parts[0] in book:
-        return book[parts[0]]
-    return None
-
-
-def compute_cost_usd(
-    *,
-    model: str,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
-    cache_read_tokens: int = 0,
-    cache_write_tokens: int = 0,
-    price_book: dict[str, dict[str, float]] | None = None,
-) -> float:
-    prices = _lookup(model, price_book or _DEFAULT_PRICES)
-    if prices is None:
-        return 0.0
-    return (
-        input_tokens * prices.get("input", 0)
-        + output_tokens * prices.get("output", 0)
-        + cache_read_tokens * prices.get("cache_read", 0)
-        + cache_write_tokens * prices.get("cache_write", 0)
-    ) / 1_000_000
+from praetor.transport import praetor_headers
 
 
 @dataclass(frozen=True)
@@ -152,29 +117,33 @@ class ControlPlaneMetricSink:
         http_client: httpx.Client | None = None,
     ) -> None:
         self._url = base_url.rstrip("/") + "/metrics/events"
-        self._headers: dict[str, str] = {"Content-Type": "application/json"}
-        if api_key:
-            self._headers["X-API-Key"] = api_key
-        if org_slug:
-            self._headers["X-Org-Slug"] = org_slug
+        self._headers = praetor_headers(api_key, org_slug)
         self._client = http_client or httpx.Client(timeout=10.0)
         self._batch_size = batch_size
         self._max_buffer = max_buffer
         self._buffer: list[MetricEvent] = []
+        # One monitor commonly wraps a client shared across threads, so
+        # record()/flush() can run concurrently. Guard the buffer so a
+        # batch isn't double-shipped (both threads swap the same list) or
+        # an appended event lost between append and swap.
+        self._lock = threading.Lock()
 
     def record(self, event: MetricEvent) -> None:
-        self._buffer.append(event)
-        if len(self._buffer) > self._max_buffer:
-            # Drop oldest; monitoring data is best-effort.
-            self._buffer = self._buffer[-self._max_buffer:]
-        if len(self._buffer) >= self._batch_size:
+        with self._lock:
+            self._buffer.append(event)
+            if len(self._buffer) > self._max_buffer:
+                # Drop oldest; monitoring data is best-effort.
+                self._buffer = self._buffer[-self._max_buffer:]
+            ready = len(self._buffer) >= self._batch_size
+        if ready:
             self.flush()
 
     def flush(self) -> None:
-        if not self._buffer:
-            return
-        batch = self._buffer
-        self._buffer = []
+        with self._lock:
+            if not self._buffer:
+                return
+            batch = self._buffer
+            self._buffer = []
         try:
             r = self._client.post(
                 self._url,
@@ -184,7 +153,8 @@ class ControlPlaneMetricSink:
             r.raise_for_status()
         except Exception:
             # Re-queue on failure (caller can retry via a fresh call).
-            self._buffer = batch + self._buffer
+            with self._lock:
+                self._buffer = batch + self._buffer
 
 
 def _extract_usage(response: Any) -> dict[str, int]:
@@ -488,7 +458,7 @@ class _StreamProxy:
     def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> bool | None:
         self._exc = exc
         try:
-            result = self._cm.__exit__(exc_type, exc, tb)
+            result: bool | None = self._cm.__exit__(exc_type, exc, tb)
         finally:
             duration_ms = int((time.perf_counter() - self._t0) * 1000)
             if self._exc is not None:
@@ -551,7 +521,7 @@ class _AsyncStreamProxy:
         self, exc_type: Any, exc: BaseException | None, tb: Any
     ) -> bool | None:
         try:
-            result = await self._cm.__aexit__(exc_type, exc, tb)
+            result: bool | None = await self._cm.__aexit__(exc_type, exc, tb)
         finally:
             duration_ms = int((time.perf_counter() - self._t0) * 1000)
             if exc is not None:
@@ -583,7 +553,7 @@ def _safe_get_final_message(stream: Any) -> Any:
     if callable(getter):
         try:
             return getter()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
     return getattr(stream, "final_message", None) or stream
 
@@ -596,7 +566,7 @@ async def _safe_aget_final_message(stream: Any) -> Any:
             if hasattr(result, "__await__"):
                 return await result
             return result
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
     return getattr(stream, "final_message", None) or stream
 

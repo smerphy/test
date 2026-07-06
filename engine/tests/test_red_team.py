@@ -202,6 +202,27 @@ class TestSsrfAndPrivateNetworks:
         assert result.decision is Decision.DENY
         assert result.matched_policy_id == "abuse-deny-link-local"
 
+    @pytest.mark.parametrize(
+        "url,expected_policy",
+        [
+            # Hostnames and URI schemes are case-insensitive per spec, so
+            # uppercase variants must not bypass the deny rules.
+            (
+                "http://METADATA.GOOGLE.INTERNAL/computeMetadata/v1/",
+                "abuse-deny-cloud-metadata-endpoints",
+            ),
+            ("http://LOCALHOST:8080/", "abuse-deny-localhost-egress"),
+            ("FILE:///etc/passwd", "abuse-deny-dangerous-url-schemes"),
+            ("Gopher://attacker.example/x", "abuse-deny-dangerous-url-schemes"),
+        ],
+    )
+    def test_case_variant_hosts_and_schemes_denied(
+        self, evaluator: Evaluator, url: str, expected_policy: str
+    ) -> None:
+        result = evaluator.evaluate(_input("http.get", {"url": url}))
+        assert result.decision is Decision.DENY
+        assert result.matched_policy_id == expected_policy
+
     def test_https_public_passes_through(self, evaluator: Evaluator) -> None:
         # Sanity: a benign public URL hits default-deny (no allow rule in
         # this bundle), with `matched_policy_id` None.

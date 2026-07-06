@@ -13,8 +13,9 @@ production, the control plane's webhook receiver makes this call.
 from __future__ import annotations
 
 import threading
+import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -22,6 +23,7 @@ import httpx
 from praetor_engine.types import PolicyInput
 
 from praetor.errors import ApprovalTimeout
+from praetor.transport import praetor_headers
 
 
 @dataclass(frozen=True)
@@ -180,9 +182,90 @@ class WebhookApprovalHandler:
             self._registry._discard(approval_id)
 
 
+class ControlPlaneApprovalHandler:
+    """Broker approvals through the control plane (default for networked SDKs).
+
+    Creates the approval on the control plane (`POST /approvals`), then polls
+    `GET /approvals/{id}` until a human resolves it in the dashboard (or it
+    expires). This is the cross-process bridge the in-process
+    `WebhookApprovalHandler` lacks: the SDK and control plane are different
+    processes, so resolution has to travel over HTTP the SDK already speaks
+    outbound — no inbound callback to the agent is required.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        api_key: str | None = None,
+        org_slug: str | None = None,
+        timeout_seconds: float = 300.0,
+        poll_interval_seconds: float = 2.0,
+        http_client: httpx.Client | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._base = base_url.rstrip("/")
+        self._headers = praetor_headers(api_key, org_slug)
+        self._timeout = timeout_seconds
+        self._poll = poll_interval_seconds
+        self._client = http_client or httpx.Client(timeout=10.0)
+        self._sleep = sleep
+        self._monotonic = monotonic
+
+    def request_approval(
+        self,
+        policy_input: PolicyInput,
+        *,
+        policy_id: str | None,
+        reason: str,
+    ) -> bool:
+        approval_id = self._create(policy_input, policy_id, reason)
+        deadline = self._monotonic() + self._timeout
+        while True:
+            status = self._status(approval_id)
+            if status == "approved":
+                return True
+            if status in ("denied", "expired"):
+                return False
+            if self._monotonic() >= deadline:
+                raise ApprovalTimeout(
+                    f"approval {approval_id} not resolved within {self._timeout}s"
+                )
+            self._sleep(self._poll)
+
+    def _create(
+        self, policy_input: PolicyInput, policy_id: str | None, reason: str
+    ) -> str:
+        resp = self._client.post(
+            f"{self._base}/approvals",
+            headers=self._headers,
+            json={
+                "agent_id": policy_input.agent.id,
+                "session_id": policy_input.session.id,
+                "tool_name": policy_input.tool.name,
+                "tool_arguments": dict(policy_input.tool.arguments),
+                "policy_id": policy_id,
+                "reason": reason,
+            },
+        )
+        resp.raise_for_status()
+        approval_id: str = resp.json()["id"]
+        return approval_id
+
+    def _status(self, approval_id: str) -> str:
+        resp = self._client.get(
+            f"{self._base}/approvals/{approval_id}", headers=self._headers
+        )
+        resp.raise_for_status()
+        status: str = resp.json()["status"]
+        return status
+
+
 __all__ = [
     "ApprovalHandler",
     "ApprovalRegistry",
     "ApprovalRequest",
+    "ControlPlaneApprovalHandler",
     "WebhookApprovalHandler",
 ]
