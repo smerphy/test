@@ -16,16 +16,20 @@ from praetor_mcp.config import (
     parse_config,
 )
 from praetor_mcp.gate import GateResult, PolicyGate
+from praetor_mcp.identity import Identity, current_identity, set_identity
 
 __all__ = [
     "EnforcementConfig",
     "GateResult",
+    "Identity",
     "PolicyGate",
     "ProxyConfig",
     "UpstreamConfig",
     "build_client",
+    "current_identity",
     "load_config",
     "parse_config",
+    "set_identity",
 ]
 
 __version__ = "0.1.0"

@@ -49,6 +49,25 @@ Two listen modes (set `listen.transport`):
 
 See `praetor-mcp.example.yaml` for a full config.
 
+## Production (streamable-HTTP gateway)
+
+For a shared HTTP gateway (many agents → one proxy):
+
+- **Downstream auth + per-session identity.** Set `listen.auth_tokens` (bearer
+  token → agent_id). Unauthenticated requests get `401`; each call is attributed
+  to the token's agent and the `Mcp-Session-Id` session, so audit attribution,
+  quarantine, and UEBA baselines stay correct across concurrent agents. Without
+  tokens the proxy runs single-identity (fine for the stdio sidecar).
+- **Config secrets** come from the environment: `${VAR}` in the YAML is expanded
+  on load, so API keys / upstream tokens live in the process env, not on disk.
+- **Health probes:** `GET /healthz` (liveness) and `/readyz` (503 until
+  upstreams are connected) for k8s.
+- **Graceful shutdown** flushes the audit shipper on the lifespan/exit path;
+  mount a **persistent volume** for `audit_log_path` so locally-buffered events
+  survive a restart.
+- **Container:** `docker build -f mcp-proxy/Dockerfile -t praetor-mcp .` (runs
+  unprivileged, healthcheck on `/healthz`). Terminate TLS at your ingress.
+
 ## Design
 
 The policy core (`praetor_mcp.gate`, `praetor_mcp.config`) has **no MCP runtime
