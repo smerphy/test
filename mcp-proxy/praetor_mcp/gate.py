@@ -126,6 +126,13 @@ class PolicyGate:
             result.matched_policy_id, server, tool,
         )
 
+    def close(self) -> None:
+        """Stop the underlying client's audit shipper and flush the sink, so a
+        graceful shutdown drains locally-buffered events. Safe to call always."""
+        stop = getattr(self._client, "stop", None)
+        if callable(stop):
+            stop()
+
     def is_tool_visible(
         self,
         tool: str,

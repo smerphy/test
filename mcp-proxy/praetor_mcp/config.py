@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,10 @@ class ProxyConfig:
     listen_transport: str = "streamable-http"
     listen_bind: str | None = "127.0.0.1:8090"
     listen_path: str = "/mcp"
+    # Downstream (incoming agent) auth for the HTTP listen: bearer token ->
+    # agent_id. When set, unauthenticated requests are rejected and each call
+    # is attributed to the token's agent. Empty = no auth (stdio sidecar / dev).
+    listen_auth_tokens: dict[str, str] = field(default_factory=dict)
 
     def validate(self) -> None:
         if not self.upstreams:
@@ -97,6 +102,7 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
         listen_transport=listen.get("transport", "streamable-http"),
         listen_bind=listen.get("bind", "127.0.0.1:8090"),
         listen_path=listen.get("path", "/mcp"),
+        listen_auth_tokens=dict(listen.get("auth_tokens", {})),
     )
     config.validate()
     return config
@@ -104,7 +110,11 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
 
 def load_config(path: Path | str) -> ProxyConfig:
     with open(path, encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
+        text = fh.read()
+    # Expand ${VAR} / $VAR from the environment so secrets (API keys, upstream
+    # tokens) live in the process env, not in the YAML on disk. Undefined vars
+    # are left intact.
+    data = yaml.safe_load(os.path.expandvars(text)) or {}
     if not isinstance(data, dict):
         raise ValueError("config root must be a mapping")
     return parse_config(data)

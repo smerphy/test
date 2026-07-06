@@ -34,7 +34,14 @@ upstreams:
 listen:
   # stdio: sidecar — the agent launches praetor-mcp as its MCP server command.
   # streamable-http: deployment mode — serve an ASGI app; point the agent's MCP
-  # client at http://<bind><path>.
+  # client at http://<bind><path>. In a container, bind 0.0.0.0.
   transport: streamable-http
   bind: 127.0.0.1:8090
   path: /mcp
+  # Downstream (incoming agent) auth. When set, requests without a matching
+  # `Authorization: Bearer <token>` are rejected 401, and each call is
+  # attributed to the token's agent_id (per-session identity for the gateway).
+  # Omit for the single-agent stdio sidecar. Health probes: GET /healthz, /readyz.
+  auth_tokens:
+    ${AGENT_A_TOKEN}: research-agent-1
+    ${AGENT_B_TOKEN}: ops-agent-1

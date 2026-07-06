@@ -28,6 +28,7 @@ from typing import Any
 
 from praetor_mcp.config import ProxyConfig, UpstreamConfig, build_client
 from praetor_mcp.gate import NAMESPACE_SEP, PolicyGate
+from praetor_mcp.identity import Identity, current_identity
 
 
 class PolicyBlocked(RuntimeError):
@@ -43,14 +44,23 @@ class ProxyServer:
         self._gate = gate or PolicyGate(
             build_client(config), on_error=config.enforcement.on_error
         )
-        self._session_id = uuid.uuid4().hex
-        self._agent_id = config.agent_id
+        # Fallback identity for the stdio sidecar (one agent per process). In
+        # HTTP mode the auth middleware sets a per-request identity that
+        # _identity() prefers.
+        self._default_identity = Identity(
+            session_id=uuid.uuid4().hex, agent_id=config.agent_id
+        )
         # namespaced name -> (upstream_name, upstream_tool_name, ClientSession)
         self._routes: dict[str, tuple[str, str, Any]] = {}
         self._tools: list[Any] = []
         self._stack = AsyncExitStack()
 
     # --- transport-agnostic routing (unit-tested) ---------------------------
+    def _identity(self) -> Identity:
+        """The caller identity for the in-flight request: the per-request one
+        set by the auth middleware, else the process default."""
+        return current_identity() or self._default_identity
+
     def _split(self, namespaced: str) -> tuple[str | None, str]:
         server, _, tool = namespaced.partition(NAMESPACE_SEP)
         return (server, tool) if tool else (None, namespaced)
@@ -60,14 +70,15 @@ class ProxyServer:
         them, and register routes."""
         from mcp import types
 
+        idn = self._identity()
         listed = await session.list_tools()
         for tool in listed.tools:
             if self._config.enforcement.hide_denied_tools and not (
                 self._gate.is_tool_visible(
                     tool.name,
-                    session_id=self._session_id,
+                    session_id=idn.session_id,
                     server=name,
-                    agent_id=self._agent_id,
+                    agent_id=idn.agent_id,
                 )
             ):
                 continue
@@ -86,12 +97,13 @@ class ProxyServer:
 
     async def handle_call_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
         server_name, tool = self._split(name)
+        idn = self._identity()
         gated = self._gate.gate_tool_call(
             tool=tool,
             arguments=arguments or {},
-            session_id=self._session_id,
+            session_id=idn.session_id,
             server=server_name,
-            agent_id=self._agent_id,
+            agent_id=idn.agent_id,
         )
         if gated.is_error:
             raise PolicyBlocked(gated.error_text())
@@ -168,7 +180,10 @@ class ProxyServer:
             await server.run(read, write, init)
 
     async def aclose(self) -> None:
+        """Close upstream connections and flush/stop the audit shipper so a
+        clean shutdown never drops locally-buffered events."""
         await self._stack.aclose()
+        self._gate.close()
 
 
 async def run_proxy(config: ProxyConfig) -> None:  # pragma: no cover
@@ -191,10 +206,27 @@ def build_asgi_app(config: ProxyConfig) -> Any:
 
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
     from starlette.applications import Starlette
-    from starlette.routing import Mount
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Mount, Route
+
+    from praetor_mcp.auth import BearerAuthMiddleware
 
     proxy = ProxyServer(config)
     manager = StreamableHTTPSessionManager(app=proxy.build_server())
+
+    # The MCP endpoint, optionally behind bearer auth that also stamps the
+    # per-request identity (agent from the token, session from the header).
+    mcp_app: Any = manager.handle_request
+    if config.listen_auth_tokens:
+        mcp_app = BearerAuthMiddleware(mcp_app, config.listen_auth_tokens)
+
+    async def _health(_req: Any) -> Any:
+        return PlainTextResponse("ok")
+
+    async def _ready(_req: Any) -> Any:
+        # Ready once at least one upstream tool is routed (upstreams connected).
+        code = 200 if proxy._routes else 503
+        return PlainTextResponse("ready" if code == 200 else "starting", status_code=code)
 
     @asynccontextmanager
     async def lifespan(_app: Any) -> Any:  # pragma: no cover - needs a running server
@@ -206,7 +238,11 @@ def build_asgi_app(config: ProxyConfig) -> Any:
                 await proxy.aclose()
 
     return Starlette(
-        routes=[Mount(config.listen_path, app=manager.handle_request)],
+        routes=[
+            Route("/healthz", _health),
+            Route("/readyz", _ready),
+            Mount(config.listen_path, app=mcp_app),
+        ],
         lifespan=lifespan,
     )
 
