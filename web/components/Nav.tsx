@@ -13,6 +13,7 @@ type Href =
   | "/fleet"
   | "/alerts"
   | "/policies"
+  | "/backtest"
   | "/audit"
   | "/approvals"
   | "/compliance"
@@ -31,6 +32,7 @@ const LINKS: { href: Href; label: string; minRole?: Role }[] = [
   { href: "/fleet", label: "Fleet" },
   { href: "/alerts", label: "Alerts" },
   { href: "/policies", label: "Policies" },
+  { href: "/backtest", label: "Backtest", minRole: "admin" },
   { href: "/audit", label: "Audit" },
   { href: "/approvals", label: "Approvals" },
   { href: "/compliance", label: "Compliance" },

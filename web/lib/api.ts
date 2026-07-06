@@ -135,6 +135,12 @@ export const api = {
       method: "POST",
       body,
     }),
+  backtestPolicy: (body: {
+    yaml_text: string;
+    since?: string;
+    until?: string;
+    limit?: number;
+  }) => call<BacktestReport>("/policies/backtest", { method: "POST", body }),
   searchAudit: (params: Record<string, string | undefined>) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
@@ -279,6 +285,33 @@ export const api = {
     description?: string;
   }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
 };
+
+export interface BacktestExample {
+  event_id: string;
+  timestamp: string;
+  agent_id: string;
+  tool_name: string;
+  old_decision: string;
+  new_decision: string;
+  new_reason: string;
+  new_policy_id: string | null;
+}
+
+export interface BacktestReport {
+  evaluated: number;
+  since: string | null;
+  until: string | null;
+  summary: {
+    unchanged: number;
+    changed: number;
+    newly_denied: number;
+    newly_allowed: number;
+    more_restrictive: number;
+    less_restrictive: number;
+  };
+  transitions: Record<string, number>;
+  examples: BacktestExample[];
+}
 
 export interface AIConfig {
   ai_enabled: boolean;
