@@ -227,6 +227,7 @@ class AuditEventOut(BaseModel):
     suggested_transform: dict[str, Any] | None
     context: dict[str, Any]
     evaluator_version: str
+    verified: bool = True
     prev_hash: str
     hash: str
 

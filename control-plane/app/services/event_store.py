@@ -17,9 +17,11 @@ archive is configured (the default), so existing deployments are unaffected.
 
 from __future__ import annotations
 
+import glob
 import gzip
 import json
 import os
+from collections.abc import Iterator
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -60,15 +62,30 @@ class ArchiveSink:
         self.root = root
         self.gzip_enabled = gzip_enabled
 
-    def _partition_path(self, kind: str, org_id: str, day: str) -> str:
+    def _safe_org(self, org_id: str) -> str:
         # org_id comes from our own DB (uuid); still guard against traversal.
-        safe_org = org_id.replace("/", "_").replace("..", "_")
+        return org_id.replace("/", "_").replace("..", "_")
+
+    def _partition_path(self, kind: str, org_id: str, day: str) -> str:
         return os.path.join(
             self.root,
             kind,
-            f"org={safe_org}",
+            f"org={self._safe_org(org_id)}",
             f"date={day}",
         )
+
+    def iter_records(self, kind: str, org_id: str) -> Iterator[Record]:
+        """Read every archived record for (kind, org) back out of the cold tier,
+        across all date partitions. gzip members decode transparently."""
+        base = os.path.join(self.root, kind, f"org={self._safe_org(org_id)}")
+        # Deterministic order: by date partition, then by file name.
+        for path in sorted(glob.glob(os.path.join(base, "date=*", f"{kind}-*"))):
+            opener = gzip.open if path.endswith(".gz") else open
+            with opener(path, "rt", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line:
+                        yield json.loads(line)
 
     def archive(
         self, kind: str, org_id: str, records: list[Record], now: datetime
@@ -131,11 +148,19 @@ def archive_events(kind: str, org_id: str, records: list[Record]) -> int:
         return 0
 
 
+def read_archive(kind: str, org_id: str) -> Iterator[Record]:
+    """Iterate archived records for (kind, org). Empty when archival is off."""
+    sink = get_event_sink()
+    if isinstance(sink, ArchiveSink):
+        yield from sink.iter_records(kind, org_id)
+
+
 __all__ = [
     "ArchiveSink",
     "EventSink",
     "NullSink",
     "archive_events",
     "get_event_sink",
+    "read_archive",
     "reset_event_sink",
 ]

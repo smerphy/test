@@ -67,28 +67,35 @@ def ingest_event(
     if existing is not None:
         return existing
 
-    latest = _latest_event(
-        session,
-        org_id=org_id,
-        agent_id=event.agent_id,
-        session_id=event.session_id,
-    )
-    if latest is None:
-        expected_prev = GENESIS_HASH
-        expected_seq = 0
-    else:
-        expected_prev = latest.hash
-        expected_seq = latest.seq + 1
+    # Chain-linkage verification. Synchronously (default) we read the chain tip
+    # and reject a broken prev_hash/seq at ingest. Under async-verify we skip
+    # the tip read entirely (removing the read-then-write contention from the
+    # hot path) and insert the event `unverified` for the background verifier.
+    async_verify = get_settings().audit_async_verify
+    if not async_verify:
+        latest = _latest_event(
+            session,
+            org_id=org_id,
+            agent_id=event.agent_id,
+            session_id=event.session_id,
+        )
+        if latest is None:
+            expected_prev = GENESIS_HASH
+            expected_seq = 0
+        else:
+            expected_prev = latest.hash
+            expected_seq = latest.seq + 1
 
-    if event.prev_hash != expected_prev:
-        raise ValueError(
-            f"prev_hash mismatch for (agent={event.agent_id}, "
-            f"session={event.session_id}): expected {expected_prev}, got {event.prev_hash}"
-        )
-    if event.seq != expected_seq:
-        raise ValueError(
-            f"seq mismatch: expected {expected_seq}, got {event.seq}"
-        )
+        if event.prev_hash != expected_prev:
+            raise ValueError(
+                f"prev_hash mismatch for (agent={event.agent_id}, "
+                f"session={event.session_id}): expected {expected_prev}, "
+                f"got {event.prev_hash}"
+            )
+        if event.seq != expected_seq:
+            raise ValueError(
+                f"seq mismatch: expected {expected_seq}, got {event.seq}"
+            )
 
     # Server-side data classification (opt-in) drives classification-aware
     # retention. Derived from a PII scan of the payload — never trusted from
@@ -115,6 +122,7 @@ def ingest_event(
         context=event.context,
         evaluator_version=event.evaluator_version,
         classification=classification,
+        verified=not async_verify,
         prev_hash=event.prev_hash,
         hash=event.hash,
     )

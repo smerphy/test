@@ -49,6 +49,14 @@ celery_app.conf.beat_schedule = {
         "task": "praetor.telemetry.apply_retention",
         "schedule": 86400.0,  # daily
     },
+    "verify-audit-chains": {
+        "task": "praetor.audit.verify_chains",
+        "schedule": 30.0,  # async-verify: flip verified / flag tamper
+    },
+    "archive-audit": {
+        "task": "praetor.audit.archive",
+        "schedule": 300.0,  # authoritative cold-tier archival
+    },
     "ai-sweep-findings": {
         "task": "praetor.ai.sweep_findings",
         "schedule": 3600.0,  # hourly proactive hunt (AI-enabled orgs only)

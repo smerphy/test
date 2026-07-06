@@ -23,7 +23,6 @@ from app.schemas import (
 from app.services.access_log import access_log
 from app.services.anchoring import create_anchor, verify_latest
 from app.services.audit_ingest import ingest_event
-from app.services.event_store import archive_events
 from app.services.ratelimit import rate_limit
 
 router = APIRouter(tags=["audit"])
@@ -43,16 +42,15 @@ def ingest_events(
 ) -> AuditIngestResult:
     accepted = 0
     errors: list[str] = []
-    archived: list[dict[str, Any]] = []
     for raw in events:
         try:
             ingest_event(session, org_id=org.id, event=raw)
             accepted += 1
-            archived.append(raw.model_dump(mode="json"))
         except ValueError as exc:
             errors.append(f"seq={raw.seq}: {exc}")
-    # Stream accepted events to the cold tier (no-op unless configured).
-    archive_events("audit", org.id, archived)
+    # Archival to the cold tier is driven reliably from committed rows by the
+    # `praetor.audit.archive` task (POST /telemetry/archive/run to force one),
+    # not best-effort from this request — see app.services.archive.
     return AuditIngestResult(
         accepted=accepted, rejected=len(events) - accepted, errors=errors
     )

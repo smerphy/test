@@ -106,6 +106,15 @@ class Settings(BaseSettings):
     event_archive_dir: str = Field(default="")
     # Whether the ingest path also gzips archived partitions.
     event_archive_gzip: bool = Field(default=True)
+    # Async chain verification: when true, /audit/events accepts events fast
+    # (self-hash checked inline; chain linkage NOT), inserting them unverified,
+    # and a background verifier flips `verified` in seq order or raises a tamper
+    # finding on a broken link. Removes the read-the-tip + ordering contention
+    # from the ingest hot path. Off by default = synchronous verify at ingest.
+    audit_async_verify: bool = Field(default=False)
+    # Max rows an archive/verify pass processes per org (bounds each pass; the
+    # scheduled task re-runs until caught up).
+    audit_maintenance_batch_size: int = Field(default=10_000)
     # Hot-store retention: raw audit events older than this many days are
     # rolled into queryable daily aggregates and pruned from the hot table,
     # bounding the primary store under high volume. None = keep raw forever.

@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -68,12 +69,26 @@ class AuditEvent(IdMixin, TimestampMixin, Base):
     prev_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
+    # Chain-linkage verification state. Under synchronous ingest this is True on
+    # insert; under async-verify ingest (PRAETOR_AUDIT_ASYNC_VERIFY) events land
+    # unverified and a background verifier flips them True in seq order (or
+    # raises a tamper finding on a broken link).
+    verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    # When this event was written to the authoritative cold archive (NULL =
+    # not yet archived). The archive task selects NULL rows, writes them, then
+    # stamps this — making the cold tier reliable rather than best-effort.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     __table_args__ = (
         Index("ix_audit_org_timestamp", "organization_id", "timestamp"),
         Index("ix_audit_org_agent", "organization_id", "agent_id"),
         Index("ix_audit_org_decision", "organization_id", "decision"),
         Index("ix_audit_org_tool", "organization_id", "tool_name"),
         Index("ix_audit_org_class", "organization_id", "classification"),
+        Index("ix_audit_org_verified", "organization_id", "verified"),
+        Index("ix_audit_org_archived", "organization_id", "archived_at"),
         Index("ix_audit_session", "session_id"),
         # At-least-once shipping retries: the SDK may ship the same event
         # twice (server received, ack lost). The hash is the natural

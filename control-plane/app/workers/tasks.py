@@ -250,6 +250,57 @@ def apply_retention_task() -> dict[str, int]:
     return {"rolled": rolled, "pruned": pruned, "orgs": orgs}
 
 
+@celery_app.task(name="praetor.audit.verify_chains")
+def verify_audit_chains_task() -> dict[str, int]:
+    """Verify pending audit-chain linkage across every org (async-verify mode).
+
+    Schedule via Celery beat. No-op unless events were ingested unverified
+    (PRAETOR_AUDIT_ASYNC_VERIFY). Flags tamper as CRITICAL findings.
+    """
+    from app.services.audit_verify import verify_pending
+
+    settings = get_settings()
+    verified = tampered = 0
+    with SessionLocal() as session:
+        org_ids = list(session.execute(select(Organization.id)).scalars())
+        for org_id in org_ids:
+            result = verify_pending(
+                session, org_id, max_chains=settings.audit_maintenance_batch_size
+            )
+            verified += result["verified"]
+            tampered += result["tampered"]
+            session.commit()
+    return {"verified": verified, "tampered": tampered}
+
+
+@celery_app.task(name="praetor.audit.archive")
+def archive_audit_task() -> dict[str, int]:
+    """Write not-yet-archived audit events to the authoritative cold tier.
+
+    Schedule via Celery beat. No-op unless a cold archive is configured
+    (PRAETOR_EVENT_ARCHIVE_DIR). Loops each org until caught up.
+    """
+    from app.services.archive import archive_pending
+
+    settings = get_settings()
+    archived = orgs = 0
+    with SessionLocal() as session:
+        org_ids = list(session.execute(select(Organization.id)).scalars())
+        for org_id in org_ids:
+            orgs += 1
+            for _ in range(1000):  # bounded batches per org per run
+                result = archive_pending(
+                    session,
+                    org_id,
+                    batch_size=settings.audit_maintenance_batch_size,
+                )
+                archived += result["archived"]
+                session.commit()
+                if result["caught_up"]:
+                    break
+    return {"archived": archived, "orgs": orgs}
+
+
 @celery_app.task(name="praetor.threat_intel.sync_due")
 def sync_threat_feeds_task() -> dict[str, int]:
     """Sync every enabled remote feed whose refresh interval has elapsed.
@@ -324,6 +375,7 @@ __all__ = [
     "ai_sweep_findings_task",
     "anchor_audit_task",
     "apply_retention_task",
+    "archive_audit_task",
     "dispatch_finding_task",
     "evaluate_all_alerts_task",
     "expire_stale_approvals_task",
@@ -333,4 +385,5 @@ __all__ = [
     "process_metric_batch_task",
     "run_detections_task",
     "sync_threat_feeds_task",
+    "verify_audit_chains_task",
 ]
