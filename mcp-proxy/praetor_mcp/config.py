@@ -38,6 +38,9 @@ class EnforcementConfig:
     on_error: str = "deny"  # fail-closed by default (it's a security control)
     approval_timeout_seconds: int = 300
     hide_denied_tools: bool = True
+    # Tool-output DLP: redact PII/secrets in tools/call *results* before the
+    # agent sees them (emails, tokens, keys, cards). Off by default.
+    redact_tool_output: bool = False
 
 
 @dataclass
@@ -97,6 +100,7 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
             on_error=enf.get("on_error", "deny"),
             approval_timeout_seconds=int(enf.get("approval_timeout_seconds", 300)),
             hide_denied_tools=bool(enf.get("hide_denied_tools", True)),
+            redact_tool_output=bool(enf.get("redact_tool_output", False)),
         ),
         control_plane_url=cp.get("url"),
         api_key=cp.get("api_key"),

@@ -17,6 +17,7 @@ class ProxyMetrics:
         self._calls: Counter[str] = Counter()
         self.upstream_errors = 0
         self.auth_rejections = 0
+        self.output_redactions = 0
 
     def record_call(self, decision: str) -> None:
         self._calls[decision] += 1
@@ -43,6 +44,9 @@ class ProxyMetrics:
             "# HELP praetor_mcp_auth_rejections_total Rejected unauthenticated requests.",
             "# TYPE praetor_mcp_auth_rejections_total counter",
             f"praetor_mcp_auth_rejections_total {self.auth_rejections}",
+            "# HELP praetor_mcp_output_redactions_total Tool-output blocks redacted (DLP).",
+            "# TYPE praetor_mcp_output_redactions_total counter",
+            f"praetor_mcp_output_redactions_total {self.output_redactions}",
         ]
         return "\n".join(lines) + "\n"
 

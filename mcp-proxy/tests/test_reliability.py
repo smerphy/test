@@ -149,3 +149,42 @@ def test_build_asgi_app_with_allowed_hosts() -> None:
     app = build_asgi_app(cfg)  # constructs TransportSecuritySettings without error
     paths = [getattr(r, "path", None) for r in app.routes]
     assert "/mcp" in paths and "/metrics" in paths
+
+
+# --- tool-output DLP --------------------------------------------------------
+async def test_tool_output_dlp_redacts(monkeypatch) -> None:
+    from praetor_mcp.server import ProxyServer
+
+    cfg = parse_config(
+        {
+            "agent": {"id": "a"},
+            "upstreams": [{"name": "mock", "transport": "stdio", "command": ["x"]}],
+            "enforcement": {"redact_tool_output": True},
+        }
+    )
+    proxy = ProxyServer(cfg, gate=_gate(Decision.ALLOW))
+
+    class _Session:
+        async def call_tool(self, tool: str, args: dict[str, Any]) -> Any:
+            block = SimpleNamespace(text="contact alice@example.com or key AKIA1234567890ABCD00")
+            return SimpleNamespace(content=[block])
+
+    proxy._routes["mock__echo"] = ("mock", "echo", _Session())
+    content = await proxy.handle_call_tool("mock__echo", {})
+    assert "alice@example.com" not in content[0].text
+    assert proxy.metrics.output_redactions == 1
+
+
+async def test_tool_output_dlp_off_by_default() -> None:
+    from praetor_mcp.server import ProxyServer
+
+    proxy = ProxyServer(_config(), gate=_gate(Decision.ALLOW))
+
+    class _Session:
+        async def call_tool(self, tool: str, args: dict[str, Any]) -> Any:
+            return SimpleNamespace(content=[SimpleNamespace(text="alice@example.com")])
+
+    proxy._routes["mock__echo"] = ("mock", "echo", _Session())
+    content = await proxy.handle_call_tool("mock__echo", {})
+    assert content[0].text == "alice@example.com"
+    assert proxy.metrics.output_redactions == 0

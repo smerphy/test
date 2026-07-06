@@ -16,6 +16,7 @@ enforcement:
   on_error: deny                   # fail-closed (security default) | allow
   approval_timeout_seconds: 300
   hide_denied_tools: true          # drop policy-denied tools from tools/list
+  redact_tool_output: false        # DLP: mask PII/secrets in tool results
 
 audit_log_path: ./praetor-mcp-audit.jsonl
 

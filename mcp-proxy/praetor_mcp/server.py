@@ -22,6 +22,7 @@ validated in staging.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from contextlib import AsyncExitStack
 from typing import Any
@@ -127,7 +128,25 @@ class ProxyServer:
             self._metrics.record_upstream_error()
             session = await self._reconnect(up_name)
             result = await self._call_upstream(session, up_tool, gated.arguments)
-        return list(result.content)
+        content = list(result.content)
+        if self._config.enforcement.redact_tool_output:
+            content = self._redact_output(content)
+        return content
+
+    def _redact_output(self, content: list[Any]) -> list[Any]:
+        """DLP on tool results: mask PII/secrets in text blocks before the
+        agent sees them, using the shared engine redactor."""
+        from praetor_engine.redaction import redact_text
+
+        for block in content:
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                redacted, found = redact_text(text)
+                if found:
+                    with contextlib.suppress(Exception):
+                        block.text = redacted
+                        self._metrics.output_redactions += 1
+        return content
 
     async def _call_upstream(self, session: Any, tool: str, arguments: dict[str, Any]) -> Any:
         return await session.call_tool(tool, arguments)
