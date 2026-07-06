@@ -16,6 +16,7 @@ from app.models.audit import AuditEvent
 from app.models.audit_anchor import AuditAnchor
 from app.models.connector import ConnectorType, NotificationConnector
 from app.models.detection_rule import DetectionRule
+from app.models.event_log import LogOffset, LogRecord
 from app.models.finding import (
     OPEN_FINDING_STATUSES,
     Finding,
@@ -81,6 +82,8 @@ __all__ = [
     "FindingSource",
     "FindingStatus",
     "IndicatorType",
+    "LogOffset",
+    "LogRecord",
     "MetricEvent",
     "NotificationConnector",
     "Organization",

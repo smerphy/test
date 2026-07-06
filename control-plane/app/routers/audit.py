@@ -23,7 +23,9 @@ from app.schemas import (
 from app.services.access_log import access_log
 from app.services.anchoring import create_anchor, verify_latest
 from app.services.audit_ingest import ingest_event
+from app.services.log_pipeline import publish_audit
 from app.services.ratelimit import rate_limit
+from app.settings import Settings, get_settings
 
 router = APIRouter(tags=["audit"])
 
@@ -37,9 +39,17 @@ def ingest_events(
     events: Annotated[list[AuditEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
     _p: Principal = Depends(require_role(Role.ANALYST)),
     _rl: None = Depends(rate_limit("ingest")),
 ) -> AuditIngestResult:
+    # Log-centric ingest: append to the durable log and return immediately;
+    # the hot-store + analytics consumer groups materialize the stores off the
+    # request path (chain verification + dedup happen in the hot materializer).
+    if settings.ingest_via_log:
+        published = publish_audit(org.id, list(events))
+        return AuditIngestResult(accepted=published, rejected=0, errors=[])
+
     accepted = 0
     errors: list[str] = []
     for raw in events:

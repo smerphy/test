@@ -70,6 +70,8 @@ module = [
     "celery.*",
     "reportlab.*",
     "authlib.*",
+    "confluent_kafka.*",
+    "clickhouse_connect.*",
 ]
 ignore_missing_imports = true
 

@@ -22,6 +22,7 @@ from app.routers import (
     investigate,
     metrics,
     org,
+    otlp,
     policies,
     privacy,
     quarantine,
@@ -86,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(approvals.router)
     app.include_router(reports.router)
     app.include_router(metrics.router)
+    app.include_router(otlp.router)
     app.include_router(alerts.router)
     app.include_router(org.router)
     app.include_router(findings.router)

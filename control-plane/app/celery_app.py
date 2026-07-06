@@ -57,6 +57,10 @@ celery_app.conf.beat_schedule = {
         "task": "praetor.audit.archive",
         "schedule": 300.0,  # authoritative cold-tier archival
     },
+    "consume-log": {
+        "task": "praetor.log.consume",
+        "schedule": 10.0,  # drain the event log into hot + analytics stores
+    },
     "ai-sweep-findings": {
         "task": "praetor.ai.sweep_findings",
         "schedule": 3600.0,  # hourly proactive hunt (AI-enabled orgs only)

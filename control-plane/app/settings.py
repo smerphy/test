@@ -106,6 +106,24 @@ class Settings(BaseSettings):
     event_archive_dir: str = Field(default="")
     # Whether the ingest path also gzips archived partitions.
     event_archive_gzip: bool = Field(default=True)
+    # --- Log-centric ingest (CQRS) --------------------------------------
+    # When true, ingest endpoints append to the durable event log and return
+    # immediately; consumer tasks materialize the hot store + analytics tier
+    # from the log. Off by default = write the hot store inline (current path).
+    ingest_via_log: bool = Field(default=False)
+    # Event-log backend: "sql" (durable default, no extra infra) or "kafka"
+    # (Kafka/Redpanda for high volume — requires confluent-kafka + a broker).
+    log_backend: str = Field(default="sql")
+    # Kafka/Redpanda bootstrap servers (only used when log_backend="kafka").
+    kafka_bootstrap_servers: str = Field(default="")
+    kafka_topic_prefix: str = Field(default="praetor.")
+    # Analytics (columnar) sink for the analytics consumer: "none" (default),
+    # "ndjson" (reuse the cold archive), or "clickhouse".
+    analytics_sink: str = Field(default="none")
+    clickhouse_dsn: str = Field(default="")
+    # Max records a single consumer poll drains per topic/run.
+    consumer_batch_size: int = Field(default=1000)
+
     # Async chain verification: when true, /audit/events accepts events fast
     # (self-hash checked inline; chain linkage NOT), inserting them unverified,
     # and a background verifier flips `verified` in seq order or raises a tamper

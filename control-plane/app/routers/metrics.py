@@ -20,9 +20,11 @@ from app.schemas import (
     MetricIngestResult,
 )
 from app.services.event_store import archive_events
+from app.services.log_pipeline import publish_metric
 from app.services.metrics import aggregate_metrics, ingest_metric
 from app.services.prometheus_export import render_prometheus
 from app.services.ratelimit import rate_limit
+from app.settings import Settings, get_settings
 
 router = APIRouter(tags=["metrics"])
 
@@ -36,9 +38,15 @@ def ingest_events(
     events: Annotated[list[MetricEventIn], Len(max_length=1000)],
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
     _p: Principal = Depends(require_role(Role.ANALYST)),
     _rl: None = Depends(rate_limit("ingest")),
 ) -> MetricIngestResult:
+    # Log-centric ingest: append to the log; consumers materialize the stores.
+    if settings.ingest_via_log:
+        published = publish_metric(org.id, list(events))
+        return MetricIngestResult(accepted=published, rejected=0, errors=[])
+
     accepted = 0
     errors: list[str] = []
     archived: list[dict[str, Any]] = []

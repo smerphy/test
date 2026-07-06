@@ -273,6 +273,20 @@ def verify_audit_chains_task() -> dict[str, int]:
     return {"verified": verified, "tampered": tampered}
 
 
+@celery_app.task(name="praetor.log.consume")
+def consume_log_task() -> dict[str, int]:
+    """Drain the event log into the hot store + analytics tier (CQRS).
+
+    Schedule via Celery beat. No-op unless ingest_via_log is on (nothing is
+    published to the log otherwise). Each consumer group tracks its own offset,
+    so this is safe to run continuously and idempotent under at-least-once.
+    """
+    from app.services.log_pipeline import run_all_consumers
+
+    settings = get_settings()
+    return run_all_consumers(max_records=settings.consumer_batch_size)
+
+
 @celery_app.task(name="praetor.audit.archive")
 def archive_audit_task() -> dict[str, int]:
     """Write not-yet-archived audit events to the authoritative cold tier.
@@ -376,6 +390,7 @@ __all__ = [
     "anchor_audit_task",
     "apply_retention_task",
     "archive_audit_task",
+    "consume_log_task",
     "dispatch_finding_task",
     "evaluate_all_alerts_task",
     "expire_stale_approvals_task",
