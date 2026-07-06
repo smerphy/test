@@ -5,7 +5,7 @@ description = "Praetor monorepo workspace root (not published)"
 requires-python = ">=3.11"
 
 [tool.uv.workspace]
-members = ["engine", "sdk-python", "control-plane"]
+members = ["engine", "sdk-python", "control-plane", "mcp-proxy"]
 
 [tool.uv]
 package = false
