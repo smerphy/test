@@ -18,6 +18,7 @@ from app.services.compliance_posture import (
     compute_posture,
     known_framework,
     list_frameworks,
+    posture_overview,
 )
 
 router = APIRouter(tags=["compliance"])
@@ -29,6 +30,16 @@ def get_frameworks(
 ) -> list[dict[str, Any]]:
     """The static framework catalog (NIST AI RMF, EU AI Act, OWASP LLM)."""
     return list_frameworks()
+
+
+@router.get("/compliance/posture")
+def get_posture_overview(
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
+) -> dict[str, Any]:
+    """Coverage summary across every framework (compliance dashboard)."""
+    return posture_overview(session, org)
 
 
 @router.get("/compliance/posture/{framework}")

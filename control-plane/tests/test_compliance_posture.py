@@ -23,6 +23,7 @@ from app.services.compliance_posture import (
     collect_signals,
     compute_posture,
     list_frameworks,
+    posture_overview,
 )
 
 
@@ -168,6 +169,28 @@ def test_open_critical_findings_surfaced(
     assert posture["open_critical_findings"] == 1
 
 
+def test_overview_covers_all_frameworks(
+    session: Session, org: Organization
+) -> None:
+    overview = posture_overview(session, org)
+    keys = {f["framework"] for f in overview["frameworks"]}
+    assert keys == {"nist_ai_rmf", "eu_ai_act", "owasp_llm"}
+    for f in overview["frameworks"]:
+        assert 0.0 <= f["coverage"] <= 1.0
+        assert (
+            f["controls_satisfied"] + f["controls_partial"] + f["controls_gap"]
+            == f["controls_total"]
+        )
+    # Full configuration lifts every framework's coverage.
+    before = {f["framework"]: f["coverage"] for f in overview["frameworks"]}
+    _fully_configure(session, org)
+    after = {
+        f["framework"]: f["coverage"]
+        for f in posture_overview(session, org)["frameworks"]
+    }
+    assert all(after[k] >= before[k] for k in before)
+
+
 # --- API --------------------------------------------------------------------
 def test_frameworks_endpoint(client: TestClient) -> None:
     rows = client.get("/compliance/frameworks").json()
@@ -181,3 +204,11 @@ def test_posture_endpoint_and_unknown_framework(client: TestClient) -> None:
     assert "controls" in r.json()
 
     assert client.get("/compliance/posture/bogus").status_code == 404
+
+
+def test_posture_overview_endpoint(client: TestClient) -> None:
+    r = client.get("/compliance/posture")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["frameworks"]) == 3
+    assert "open_critical_findings" in body

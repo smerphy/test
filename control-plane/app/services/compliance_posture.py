@@ -418,6 +418,41 @@ def compute_posture(
     }
 
 
+def posture_overview(session: Session, org: Organization) -> dict[str, Any]:
+    """Coverage summary across every framework (for a compliance dashboard).
+
+    Computes signals once and grades all frameworks against that single
+    snapshot — cheaper and more consistent than calling compute_posture per
+    framework.
+    """
+    signals = collect_signals(session, org)
+    frameworks = []
+    for fw in _FRAMEWORKS.values():
+        counts = {"satisfied": 0, "partial": 0, "gap": 0}
+        score = 0.0
+        for control in fw.controls:
+            status = _assess_control(control, signals)["status"]
+            counts[status] += 1
+            score += _STATUS_SCORE[status]
+        total = len(fw.controls)
+        frameworks.append(
+            {
+                "framework": fw.key,
+                "title": fw.title,
+                "coverage": round(score / total, 3) if total else 0.0,
+                "controls_total": total,
+                "controls_satisfied": counts["satisfied"],
+                "controls_partial": counts["partial"],
+                "controls_gap": counts["gap"],
+            }
+        )
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "open_critical_findings": signals.open_critical_findings,
+        "frameworks": frameworks,
+    }
+
+
 def known_framework(framework: str) -> bool:
     return framework in _FRAMEWORKS
 
@@ -428,4 +463,5 @@ __all__ = [
     "compute_posture",
     "known_framework",
     "list_frameworks",
+    "posture_overview",
 ]
