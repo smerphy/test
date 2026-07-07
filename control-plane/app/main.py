@@ -15,6 +15,7 @@ from app.routers import (
     approvals,
     audit,
     baselines,
+    compliance,
     connectors,
     detection_rules,
     finance,
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(quarantine.router)
     app.include_router(killswitch.router)
     app.include_router(playbooks.router)
+    app.include_router(compliance.router)
     app.include_router(investigate.router)
     app.include_router(fleet.router)
     app.include_router(detection_rules.router)
