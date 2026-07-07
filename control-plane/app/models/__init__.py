@@ -31,6 +31,11 @@ from app.models.finding import (
 )
 from app.models.metric import MetricEvent
 from app.models.org import Organization, Role, User
+from app.models.playbook import (
+    PlaybookActionType,
+    PlaybookExecution,
+    ResponsePlaybook,
+)
 from app.models.policy import (
     PolicyBundle,
     PolicyRollout,
@@ -91,6 +96,8 @@ __all__ = [
     "MetricEvent",
     "NotificationConnector",
     "Organization",
+    "PlaybookActionType",
+    "PlaybookExecution",
     "PolicyBundle",
     "PolicyRollout",
     "PolicyVersion",
@@ -98,6 +105,7 @@ __all__ = [
     "Quarantine",
     "QuarantineSource",
     "ReportStatus",
+    "ResponsePlaybook",
     "Role",
     "RolloutState",
     "RuleSuggestion",

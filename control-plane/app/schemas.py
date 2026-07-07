@@ -31,6 +31,7 @@ from app.models import (
     FindingSeverity,
     FindingStatus,
     IndicatorType,
+    PlaybookActionType,
     QuarantineSource,
     ReportStatus,
     Role,
@@ -974,4 +975,64 @@ class ConnectorOut(BaseModel):
     secret_set: bool = False
     last_status: str | None = None
     last_error: str | None = None
+    created_at: datetime
+
+
+# --- SOAR response playbooks ------------------------------------------------
+class PlaybookAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: PlaybookActionType
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlaybookConditions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    min_severity: FindingSeverity | None = None
+    categories: list[FindingCategory] | None = None
+    rule_ids: list[str] | None = None
+    sources: list[str] | None = None
+    min_risk_score: float | None = Field(default=None, ge=0, le=100)
+
+
+class PlaybookIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=2048)
+    enabled: bool = True
+    priority: int = Field(default=100, ge=0, le=100000)
+    stop_on_match: bool = False
+    conditions: PlaybookConditions = Field(default_factory=PlaybookConditions)
+    actions: list[PlaybookAction] = Field(default_factory=list)
+
+
+class PlaybookUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=2048)
+    enabled: bool | None = None
+    priority: int | None = Field(default=None, ge=0, le=100000)
+    stop_on_match: bool | None = None
+    conditions: PlaybookConditions | None = None
+    actions: list[PlaybookAction] | None = None
+
+
+class PlaybookOut(BaseModel):
+    model_config = _BASE
+    id: str
+    name: str
+    description: str | None = None
+    enabled: bool
+    priority: int
+    stop_on_match: bool
+    conditions: dict[str, Any]
+    actions: list[dict[str, Any]]
+    created_at: datetime
+
+
+class PlaybookExecutionOut(BaseModel):
+    model_config = _BASE
+    id: str
+    playbook_id: str
+    finding_id: str
+    results: list[dict[str, Any]]
     created_at: datetime
