@@ -8,6 +8,7 @@ type Href =
   | "/finance"
   | "/security"
   | "/findings"
+  | "/soar"
   | "/threat"
   | "/ai"
   | "/fleet"
@@ -27,6 +28,7 @@ const LINKS: { href: Href; label: string; minRole?: Role }[] = [
   { href: "/finance", label: "Cost" },
   { href: "/security", label: "Security" },
   { href: "/findings", label: "Findings" },
+  { href: "/soar", label: "SOAR", minRole: "analyst" },
   { href: "/threat", label: "Threat Intel" },
   { href: "/ai", label: "AI" },
   { href: "/fleet", label: "Fleet" },

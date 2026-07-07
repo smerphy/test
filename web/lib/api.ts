@@ -284,7 +284,97 @@ export const api = {
     confidence?: number;
     description?: string;
   }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
+
+  // --- Compliance posture ---------------------------------------------------
+  getPostureOverview: () => call<PostureOverview>("/compliance/posture"),
+  getPosture: (framework: string) =>
+    call<FrameworkPosture>(`/compliance/posture/${framework}`),
+
+  // --- SOAR response playbooks ----------------------------------------------
+  listPlaybooks: () => call<Playbook[]>("/soar/playbooks"),
+  createPlaybook: (body: {
+    name: string;
+    description?: string;
+    priority?: number;
+    stop_on_match?: boolean;
+    conditions?: Record<string, unknown>;
+    actions?: { type: string; params?: Record<string, unknown> }[];
+  }) => call<Playbook>("/soar/playbooks", { method: "POST", body }),
+  setPlaybookEnabled: (id: string, enabled: boolean) =>
+    call<Playbook>(`/soar/playbooks/${id}`, {
+      method: "PATCH",
+      body: { enabled },
+    }),
+  listPlaybookExecutions: (limit = 50) =>
+    call<PlaybookExecution[]>(`/soar/executions?limit=${limit}`),
 };
+
+// --- Compliance posture -----------------------------------------------------
+export interface PostureFrameworkSummary {
+  framework: string;
+  title: string;
+  coverage: number;
+  controls_total: number;
+  controls_satisfied: number;
+  controls_partial: number;
+  controls_gap: number;
+}
+
+export interface PostureOverview {
+  generated_at: string;
+  open_critical_findings: number;
+  frameworks: PostureFrameworkSummary[];
+}
+
+export type ControlStatus = "satisfied" | "partial" | "gap";
+
+export interface PostureControl {
+  id: string;
+  title: string;
+  description: string;
+  status: ControlStatus;
+  present_signals: string[];
+  missing_signals: string[];
+  remediation: string[];
+}
+
+export interface FrameworkPosture extends PostureFrameworkSummary {
+  generated_at: string;
+  open_critical_findings: number;
+  controls: PostureControl[];
+}
+
+// --- SOAR response playbooks ------------------------------------------------
+export interface PlaybookAction {
+  type: string;
+  params?: Record<string, unknown>;
+}
+
+export interface Playbook {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  priority: number;
+  stop_on_match: boolean;
+  conditions: Record<string, unknown>;
+  actions: PlaybookAction[];
+  created_at: string;
+}
+
+export interface PlaybookActionResult {
+  type: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface PlaybookExecution {
+  id: string;
+  playbook_id: string;
+  finding_id: string;
+  results: PlaybookActionResult[];
+  created_at: string;
+}
 
 export interface BacktestExample {
   event_id: string;
