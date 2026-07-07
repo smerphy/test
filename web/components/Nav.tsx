@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { api, type Role } from "@/lib/api";
 import { roleAtLeast } from "@/lib/rbac";
+import { NavLinks } from "@/components/NavLinks";
 
 type Href =
   | "/"
@@ -42,10 +43,10 @@ const LINKS: { href: Href; label: string; minRole?: Role }[] = [
 ];
 
 const ROLE_STYLE: Record<Role, string> = {
-  viewer: "bg-slate-500/15 text-slate-400 ring-slate-500/30",
-  analyst: "bg-sky-500/15 text-sky-400 ring-sky-500/30",
-  admin: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
-  owner: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
+  viewer: "bg-muted text-foreground/60 ring-border",
+  analyst: "bg-accent/15 text-accent ring-accent/30",
+  admin: "bg-warning/15 text-warning ring-warning/30",
+  owner: "bg-success/15 text-success ring-success/30",
 };
 
 export async function Nav() {
@@ -64,34 +65,36 @@ export async function Nav() {
   );
 
   return (
-    <nav className="border-b border-border bg-muted/30">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
-        <Link href="/" className="font-mono text-sm font-semibold tracking-tight">
-          ephorate<span className="text-foreground/40">/cp</span>
+    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/65">
+      <div className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-2.5">
+        <Link
+          href="/"
+          className="flex shrink-0 items-center gap-2 rounded-md py-1 pr-2 font-mono text-sm font-semibold tracking-tight"
+        >
+          <span
+            aria-hidden
+            className="grid h-6 w-6 place-items-center rounded-md bg-accent/15 text-accent ring-1 ring-inset ring-accent/30"
+          >
+            E
+          </span>
+          <span>
+            ephorate<span className="text-foreground/40">/cp</span>
+          </span>
         </Link>
-        <ul className="flex items-center gap-4 text-sm">
-          {links.map((l) => (
-            <li key={l.href}>
-              <Link
-                href={l.href}
-                className="rounded px-2 py-1 text-foreground/80 hover:bg-muted hover:text-foreground"
-              >
-                {l.label}
-              </Link>
-            </li>
-          ))}
-          {role && (
-            <li>
-              <span
-                className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${ROLE_STYLE[role]}`}
-                title="Your effective role in this workspace"
-              >
-                {role}
-              </span>
-            </li>
-          )}
-        </ul>
+
+        <nav aria-label="Primary" className="min-w-0 flex-1">
+          <NavLinks links={links} />
+        </nav>
+
+        {role && (
+          <span
+            className={`hidden shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset sm:inline-flex ${ROLE_STYLE[role]}`}
+            title="Your effective role in this workspace"
+          >
+            {role}
+          </span>
+        )}
       </div>
-    </nav>
+    </header>
   );
 }

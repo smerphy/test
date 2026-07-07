@@ -19,7 +19,7 @@ function Pill({ value, styles }: { value: string; styles: Record<string, string>
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset",
+        "inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset",
         styles[value] ?? "bg-muted text-foreground/70 ring-border"
       )}
     >

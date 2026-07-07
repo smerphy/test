@@ -2,15 +2,126 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body {
-  background: #0a0a0a;
-  color: #fafafa;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  min-height: 100vh;
+@layer base {
+  /*
+   * Design tokens — a refined dark theme for the security console.
+   * Values are space-separated RGB channels so Tailwind's `/opacity`
+   * utilities keep working (see tailwind.config.ts).
+   */
+  :root {
+    --background: 9 11 14; /* app canvas */
+    --surface: 20 23 29; /* cards / raised panels */
+    --foreground: 236 239 244; /* primary text */
+    --muted: 32 36 44; /* chips, bars, subtle fills */
+    --border: 42 47 56; /* hairlines */
+    --accent: 59 130 246; /* interactive / links */
+    --danger: 248 113 113;
+    --warning: 245 158 11;
+    --success: 52 211 153;
+    --ring: 96 165 250; /* focus ring */
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
+    font-family:
+      system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.014em;
+    text-wrap: balance;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.32);
+  }
+
+  /* Keyboard focus — visible and consistent, never shown on mouse click. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--ring) / 0.75);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Native form controls inherit the app font and animate smoothly. */
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      box-shadow 0.15s ease,
+      opacity 0.15s ease,
+      color 0.15s ease;
+  }
+
+  /* Text inputs get an accent focus ring instead of the raw browser outline. */
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    border-color: rgb(var(--accent) / 0.9);
+    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.22);
+  }
+
+  /* Thin, unobtrusive scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--border)) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 9999px;
+    border: 3px solid rgb(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--foreground) / 0.28);
+  }
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -57,8 +57,10 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold">Ephorate · Claude monitoring</h1>
-        <p className="mt-1 text-sm text-foreground/60">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Ephorate <span className="text-foreground/40">·</span> Claude monitoring
+        </h1>
+        <p className="mt-1.5 text-sm text-foreground/60">
           Token usage, cost, latency, error rate, and alert firings — last 24h.
         </p>
       </header>
@@ -87,43 +89,56 @@ export default async function DashboardPage() {
               {alerts.length === 0 ? (
                 <p className="text-sm text-foreground/60">
                   No alerts firing.{" "}
-                  <Link href="/alerts" className="text-accent underline">
+                  <Link href="/alerts" className="font-medium text-accent underline-offset-2 hover:underline">
                     Create one →
                   </Link>
                 </p>
               ) : (
-                <table className="w-full text-left font-mono text-xs">
-                  <thead className="text-foreground/60">
-                    <tr>
-                      <th className="py-1 pr-3">When</th>
-                      <th className="py-1 pr-3">Rule</th>
-                      <th className="py-1 pr-3">Group</th>
-                      <th className="py-1 pr-3 text-right">Value</th>
-                      <th className="py-1 pr-3 text-right">Threshold</th>
-                      <th className="py-1">Delivered</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alerts.map((a) => (
-                      <tr key={a.id} className="border-t border-border/50">
-                        <td className="py-1 pr-3 tabular-nums">
-                          {new Date(a.fired_at).toISOString().slice(11, 19)}
-                        </td>
-                        <td className="py-1 pr-3">{a.rule_id.slice(0, 8)}</td>
-                        <td className="py-1 pr-3">{a.group_key ?? "—"}</td>
-                        <td className="py-1 pr-3 text-right tabular-nums">
-                          {a.metric_value.toFixed(4)}
-                        </td>
-                        <td className="py-1 pr-3 text-right tabular-nums">
-                          {a.threshold}
-                        </td>
-                        <td className="py-1">
-                          {a.delivered ? "ok" : "failed"}
-                        </td>
+                <div className="-mx-2 overflow-x-auto">
+                  <table className="w-full min-w-[36rem] text-left font-mono text-xs">
+                    <thead>
+                      <tr className="text-[0.7rem] uppercase tracking-wider text-foreground/45">
+                        <th className="px-2 py-1.5 font-medium">When</th>
+                        <th className="px-2 py-1.5 font-medium">Rule</th>
+                        <th className="px-2 py-1.5 font-medium">Group</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Value</th>
+                        <th className="px-2 py-1.5 text-right font-medium">
+                          Threshold
+                        </th>
+                        <th className="px-2 py-1.5 font-medium">Delivered</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {alerts.map((a) => (
+                        <tr
+                          key={a.id}
+                          className="border-t border-border/60 hover:bg-muted/40"
+                        >
+                          <td className="px-2 py-1.5 tabular-nums text-foreground/70">
+                            {new Date(a.fired_at).toISOString().slice(11, 19)}
+                          </td>
+                          <td className="px-2 py-1.5">{a.rule_id.slice(0, 8)}</td>
+                          <td className="px-2 py-1.5">{a.group_key ?? "—"}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {a.metric_value.toFixed(4)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {a.threshold}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <span
+                              className={
+                                a.delivered ? "text-success" : "text-danger"
+                              }
+                            >
+                              {a.delivered ? "delivered" : "failed"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </Card>
 
@@ -139,19 +154,19 @@ export default async function DashboardPage() {
               <Card title="Where to go next">
                 <ul className="space-y-1 text-sm">
                   <li>
-                    <Link href="/monitoring" className="text-accent underline">
+                    <Link href="/monitoring" className="font-medium text-accent underline-offset-2 hover:underline">
                       Monitoring →
                     </Link>{" "}
                     per-model breakdown, latency, errors
                   </li>
                   <li>
-                    <Link href="/alerts" className="text-accent underline">
+                    <Link href="/alerts" className="font-medium text-accent underline-offset-2 hover:underline">
                       Alerts →
                     </Link>{" "}
                     threshold rules + firing history
                   </li>
                   <li>
-                    <Link href="/audit" className="text-accent underline">
+                    <Link href="/audit" className="font-medium text-accent underline-offset-2 hover:underline">
                       Audit →
                     </Link>{" "}
                     every policy decision, with filters
@@ -161,7 +176,7 @@ export default async function DashboardPage() {
               <Card title="Compliance">
                 <p className="text-sm text-foreground/60">
                   Generate framework-mapped reports →{" "}
-                  <Link href="/compliance" className="text-accent underline">
+                  <Link href="/compliance" className="font-medium text-accent underline-offset-2 hover:underline">
                     open
                   </Link>
                 </p>
