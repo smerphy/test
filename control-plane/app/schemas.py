@@ -1036,3 +1036,29 @@ class PlaybookExecutionOut(BaseModel):
     finding_id: str
     results: list[dict[str, Any]]
     created_at: datetime
+
+
+class PlaybookSimulateIn(BaseModel):
+    """A hypothetical finding to preview playbook matching against."""
+
+    model_config = ConfigDict(extra="forbid")
+    severity: FindingSeverity
+    category: FindingCategory
+    rule_id: str = Field(..., min_length=1, max_length=128)
+    source: str = "detection_engine"
+    impact: str = "moderate"
+    fidelity: float = Field(default=1.0, ge=0, le=1)
+    agent_id: str | None = None
+    session_id: str | None = None
+
+
+class PlaybookMatchOut(BaseModel):
+    playbook_id: str
+    name: str
+    priority: int
+    stop_on_match: bool
+    actions: list[str]
+
+
+class PlaybookSimulateOut(BaseModel):
+    matched: list[PlaybookMatchOut]

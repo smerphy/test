@@ -270,6 +270,62 @@ def test_invalid_action_type_rejected(client: TestClient) -> None:
     assert r.status_code == 422
 
 
+def test_simulate_endpoint_previews_without_side_effects(
+    session: Session, org: Organization, client: TestClient
+) -> None:
+    _playbook(
+        session,
+        org,
+        name="crit-exfil",
+        priority=10,
+        stop_on_match=True,
+        conditions={"min_severity": "high", "categories": ["data_exfil"]},
+        actions=[{"type": "quarantine"}, {"type": "notify_connectors"}],
+    )
+    _playbook(
+        session,
+        org,
+        name="low-noise",
+        priority=20,
+        conditions={"min_severity": "critical"},
+        actions=[{"type": "tag", "params": {"tags": ["x"]}}],
+    )
+    session.commit()
+
+    # A critical data_exfil finding matches the first (stop_on_match) only.
+    r = client.post(
+        "/soar/playbooks/simulate",
+        json={
+            "severity": "critical",
+            "category": "data_exfil",
+            "rule_id": "injection-exfil",
+            "agent_id": "a1",
+        },
+    )
+    assert r.status_code == 200
+    matched = r.json()["matched"]
+    assert [m["name"] for m in matched] == ["crit-exfil"]
+    assert matched[0]["actions"] == ["quarantine", "notify_connectors"]
+
+    # No execution was recorded and no quarantine created (pure preview).
+    assert client.get("/soar/executions").json() == []
+    assert (
+        client.get("/quarantines/check", params={"agent_id": "a1"}).json()[
+            "quarantined"
+        ]
+        is False
+    )
+
+
+def test_simulate_no_match(client: TestClient) -> None:
+    r = client.post(
+        "/soar/playbooks/simulate",
+        json={"severity": "low", "category": "abuse", "rule_id": "r"},
+    )
+    assert r.status_code == 200
+    assert r.json()["matched"] == []
+
+
 def test_execution_history_endpoint(
     session: Session, org: Organization, client: TestClient
 ) -> None:

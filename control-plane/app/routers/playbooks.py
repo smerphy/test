@@ -6,6 +6,7 @@ it shows what automated response fired on which finding.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,13 +17,22 @@ from sqlalchemy.orm import Session
 from app.auth import Principal, current_org, require_role
 from app.db import get_session
 from app.deps import get_owned
-from app.models import Organization, PlaybookExecution, ResponsePlaybook, Role
+from app.models import (
+    Finding,
+    Organization,
+    PlaybookExecution,
+    ResponsePlaybook,
+    Role,
+)
 from app.schemas import (
     PlaybookExecutionOut,
     PlaybookIn,
     PlaybookOut,
+    PlaybookSimulateIn,
+    PlaybookSimulateOut,
     PlaybookUpdateIn,
 )
+from app.services.soar import simulate_playbooks
 
 router = APIRouter(tags=["soar"])
 
@@ -58,6 +68,34 @@ def create_playbook(
             detail=f"a playbook named {body.name!r} already exists",
         ) from exc
     return playbook
+
+
+@router.post("/soar/playbooks/simulate", response_model=PlaybookSimulateOut)
+def simulate(
+    body: PlaybookSimulateIn,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+    _p: Principal = Depends(require_role(Role.ANALYST)),
+) -> PlaybookSimulateOut:
+    """Preview which playbooks would fire for a hypothetical finding. Read-only:
+    no actions run, nothing is persisted."""
+    now = datetime.now(UTC)
+    probe = Finding(
+        organization_id=org.id,
+        rule_id=body.rule_id,
+        title="(simulation)",
+        severity=body.severity,
+        category=body.category,
+        source=body.source,
+        impact=body.impact,
+        fidelity=body.fidelity,
+        agent_id=body.agent_id,
+        session_id=body.session_id,
+        dedup_key="(simulation)",
+        first_seen=now,
+        last_seen=now,
+    )
+    return PlaybookSimulateOut(matched=simulate_playbooks(session, org, probe))
 
 
 @router.get("/soar/playbooks", response_model=list[PlaybookOut])

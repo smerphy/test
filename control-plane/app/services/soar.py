@@ -174,12 +174,10 @@ def _run_action(
     return {"type": atype, "ok": ok, "detail": detail}
 
 
-def run_playbooks(
-    session: Session, org: Organization, finding: Finding
-) -> list[PlaybookExecution]:
-    """Evaluate enabled playbooks against a finding and run matching actions.
-    Returns the executions recorded (one per fired playbook)."""
-    playbooks = list(
+def _enabled_playbooks(
+    session: Session, org: Organization
+) -> list[ResponsePlaybook]:
+    return list(
         session.execute(
             select(ResponsePlaybook)
             .where(
@@ -191,6 +189,14 @@ def run_playbooks(
             )
         ).scalars()
     )
+
+
+def run_playbooks(
+    session: Session, org: Organization, finding: Finding
+) -> list[PlaybookExecution]:
+    """Evaluate enabled playbooks against a finding and run matching actions.
+    Returns the executions recorded (one per fired playbook)."""
+    playbooks = _enabled_playbooks(session, org)
 
     executions: list[PlaybookExecution] = []
     for playbook in playbooks:
@@ -216,4 +222,33 @@ def run_playbooks(
     return executions
 
 
-__all__ = ["matches", "run_playbooks"]
+def simulate_playbooks(
+    session: Session, org: Organization, finding: Finding
+) -> list[dict[str, Any]]:
+    """Preview which enabled playbooks would fire for a hypothetical finding and
+    what actions they'd run — no actions are executed and nothing is persisted.
+
+    ``finding`` should be a transient (un-added) Finding carrying the attributes
+    to test; only its fields are read.
+    """
+    preview: list[dict[str, Any]] = []
+    for playbook in _enabled_playbooks(session, org):
+        if not matches(playbook, finding):
+            continue
+        preview.append(
+            {
+                "playbook_id": playbook.id,
+                "name": playbook.name,
+                "priority": playbook.priority,
+                "stop_on_match": playbook.stop_on_match,
+                "actions": [
+                    str(a.get("type", "")) for a in (playbook.actions or [])
+                ],
+            }
+        )
+        if playbook.stop_on_match:
+            break
+    return preview
+
+
+__all__ = ["matches", "run_playbooks", "simulate_playbooks"]
