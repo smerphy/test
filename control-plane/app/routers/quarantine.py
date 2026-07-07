@@ -86,6 +86,19 @@ def check(
     agent_id: Annotated[str | None, Query()] = None,
     session_id: Annotated[str | None, Query()] = None,
 ) -> QuarantineCheckOut:
+    # Global kill-switch: a halted agent (without a break-glass exception) is
+    # isolated before any per-entity quarantine is even considered.
+    from app.services.killswitch import is_agent_halted
+    from app.services.spend_guard import spend_block_reason
+
+    if is_agent_halted(session, org, agent_id=agent_id):
+        return QuarantineCheckOut(
+            quarantined=True, reason="organization halted (kill-switch)"
+        )
+    # Hard spend enforcement: over-budget org / over-quota agent is denied.
+    spend_reason = spend_block_reason(session, org, agent_id=agent_id)
+    if spend_reason is not None:
+        return QuarantineCheckOut(quarantined=True, reason=spend_reason)
     q = match_quarantine(
         session, org.id, agent_id=agent_id, session_id=session_id
     )

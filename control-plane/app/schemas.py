@@ -31,6 +31,7 @@ from app.models import (
     FindingSeverity,
     FindingStatus,
     IndicatorType,
+    PlaybookActionType,
     QuarantineSource,
     ReportStatus,
     Role,
@@ -51,6 +52,9 @@ class OrganizationOut(BaseModel):
     finding_webhook_url: str | None = None
     finding_min_severity: str = "high"
     monthly_cost_budget_usd: float | None = None
+    enforce_cost_budget: bool = False
+    agent_cost_quota_usd: float | None = None
+    halt_all: bool = False
 
 
 class OrganizationUpdateIn(BaseModel):
@@ -66,6 +70,10 @@ class OrganizationUpdateIn(BaseModel):
     # Monthly agent LLM spend budget (USD) powering the FinOps forecast. Send
     # null to clear (track without a budget); 0 means any spend is over budget.
     monthly_cost_budget_usd: float | None = Field(default=None, ge=0)
+    # Hard enforcement of the budget (deny agents when the org is over budget).
+    enforce_cost_budget: bool | None = None
+    # Per-agent monthly spend cap (USD); null clears it.
+    agent_cost_quota_usd: float | None = Field(default=None, ge=0)
 
 
 class UserOut(BaseModel):
@@ -140,6 +148,29 @@ class PolicyVersionIn(BaseModel):
     yaml_text: str = Field(..., min_length=1, max_length=256 * 1024)
     notes: str | None = None
     author_email: str | None = None
+
+
+class BreakGlassIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(..., min_length=1, max_length=255)
+    reason: str = Field(..., min_length=1, max_length=2000)
+    minutes: int = Field(default=60, ge=1, le=1440)
+    granted_by: str | None = Field(default=None, max_length=255)
+
+
+class BreakGlassOut(BaseModel):
+    model_config = _BASE
+    id: str
+    agent_id: str
+    reason: str
+    granted_by: str | None = None
+    expires_at: datetime
+    created_at: datetime
+
+
+class KillSwitchOut(BaseModel):
+    halt_all: bool
+    active_break_glass: list[BreakGlassOut] = Field(default_factory=list)
 
 
 class AgentBaselineOut(BaseModel):
@@ -945,3 +976,89 @@ class ConnectorOut(BaseModel):
     last_status: str | None = None
     last_error: str | None = None
     created_at: datetime
+
+
+# --- SOAR response playbooks ------------------------------------------------
+class PlaybookAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: PlaybookActionType
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlaybookConditions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    min_severity: FindingSeverity | None = None
+    categories: list[FindingCategory] | None = None
+    rule_ids: list[str] | None = None
+    sources: list[str] | None = None
+    min_risk_score: float | None = Field(default=None, ge=0, le=100)
+
+
+class PlaybookIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=2048)
+    enabled: bool = True
+    priority: int = Field(default=100, ge=0, le=100000)
+    stop_on_match: bool = False
+    conditions: PlaybookConditions = Field(default_factory=PlaybookConditions)
+    actions: list[PlaybookAction] = Field(default_factory=list)
+
+
+class PlaybookUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=2048)
+    enabled: bool | None = None
+    priority: int | None = Field(default=None, ge=0, le=100000)
+    stop_on_match: bool | None = None
+    conditions: PlaybookConditions | None = None
+    actions: list[PlaybookAction] | None = None
+
+
+class PlaybookOut(BaseModel):
+    model_config = _BASE
+    id: str
+    name: str
+    description: str | None = None
+    enabled: bool
+    priority: int
+    stop_on_match: bool
+    conditions: dict[str, Any]
+    actions: list[dict[str, Any]]
+    created_at: datetime
+
+
+class PlaybookExecutionOut(BaseModel):
+    model_config = _BASE
+    id: str
+    playbook_id: str
+    finding_id: str
+    results: list[dict[str, Any]]
+    created_at: datetime
+
+
+class PlaybookSimulateIn(BaseModel):
+    """A hypothetical finding to preview playbook matching against."""
+
+    model_config = ConfigDict(extra="forbid")
+    severity: FindingSeverity
+    category: FindingCategory
+    rule_id: str = Field(..., min_length=1, max_length=128)
+    source: str = "detection_engine"
+    impact: str = "moderate"
+    fidelity: float = Field(default=1.0, ge=0, le=1)
+    agent_id: str | None = None
+    session_id: str | None = None
+
+
+class PlaybookMatchOut(BaseModel):
+    playbook_id: str
+    name: str
+    priority: int
+    stop_on_match: bool
+    actions: list[str]
+
+
+class PlaybookSimulateOut(BaseModel):
+    matched: list[PlaybookMatchOut]

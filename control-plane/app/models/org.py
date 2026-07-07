@@ -60,6 +60,12 @@ class Organization(IdMixin, TimestampMixin, Base):
     pii_redaction_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    # Global kill-switch (EDR): when engaged, every agent/session is treated as
+    # quarantined (denied inline via /quarantines/check) except those with an
+    # active break-glass grant. Owner-controlled emergency stop.
+    halt_all: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     # --- AI-native advisory (opt-in, bring-your-own-key, vendor-neutral) ---
     # Off by default: the deterministic policy engine is fully functional
@@ -96,6 +102,14 @@ class Organization(IdMixin, TimestampMixin, Base):
     # Praetor's own advisory service). Powers the financial-tracking section's
     # burn-down + end-of-month forecast. Null = no budget (tracking only).
     monthly_cost_budget_usd: Mapped[float | None] = mapped_column(Float)
+    # Hard enforcement: when true and month-to-date agent spend >=
+    # monthly_cost_budget_usd, agents are denied inline (via /quarantines/check).
+    enforce_cost_budget: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    # Per-agent monthly spend cap (USD). An agent over its quota is denied even
+    # if the org is under its overall budget. Null = no per-agent quota.
+    agent_cost_quota_usd: Mapped[float | None] = mapped_column(Float)
 
     users: Mapped[list[User]] = relationship(back_populates="organization")
     projects: Mapped[list[Project]] = relationship(back_populates="organization")  # type: ignore[name-defined]  # noqa: F821

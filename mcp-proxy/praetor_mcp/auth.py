@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from praetor_mcp.identity import Identity, set_identity
+from praetor_mcp.metrics import ProxyMetrics
 
 _ASGIApp = Any
 
@@ -36,9 +37,15 @@ async def _reject(send: Any) -> None:
 class BearerAuthMiddleware:
     """Require ``Authorization: Bearer <token>``; map the token to an agent."""
 
-    def __init__(self, app: _ASGIApp, tokens: dict[str, str]) -> None:
+    def __init__(
+        self,
+        app: _ASGIApp,
+        tokens: dict[str, str],
+        metrics: ProxyMetrics | None = None,
+    ) -> None:
         self._app = app
         self._tokens = tokens
+        self._metrics = metrics
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
@@ -49,6 +56,8 @@ class BearerAuthMiddleware:
         token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
         agent = self._tokens.get(token)
         if agent is None:
+            if self._metrics is not None:
+                self._metrics.record_auth_rejection()
             await _reject(send)
             return
         raw_sid = headers.get(b"mcp-session-id", b"").decode()

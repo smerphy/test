@@ -29,6 +29,7 @@ from app.models import (
     Organization,
 )
 from app.services.quarantine import auto_quarantine_for_finding
+from app.services.soar import run_playbooks
 from app.services.threat_intel import build_index, match_activity, severity_rank
 
 # Tunables (would move to per-org config later).
@@ -505,18 +506,23 @@ def run_detections(
             updated += 1
     session.flush()  # assign ids before auto-response references them
 
-    # EDR auto-response: isolate the entity behind each new CRITICAL finding.
+    # EDR auto-response: isolate the entity behind each new CRITICAL finding,
+    # then run SOAR playbooks (which may quarantine/notify/forward/tag) for each.
     quarantined = 0
+    playbooks_fired = 0
     org = session.get(Organization, org_id)
     if org is not None:
         for finding in new_findings:
             if auto_quarantine_for_finding(session, org, finding) is not None:
                 quarantined += 1
+        for finding in new_findings:
+            playbooks_fired += len(run_playbooks(session, org, finding))
     session.flush()
     return {
         "created": created,
         "updated": updated,
         "quarantined": quarantined,
+        "playbooks_fired": playbooks_fired,
         "new_finding_ids": [f.id for f in new_findings],
     }
 

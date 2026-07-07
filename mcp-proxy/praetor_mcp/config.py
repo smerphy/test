@@ -38,6 +38,9 @@ class EnforcementConfig:
     on_error: str = "deny"  # fail-closed by default (it's a security control)
     approval_timeout_seconds: int = 300
     hide_denied_tools: bool = True
+    # Tool-output DLP: redact PII/secrets in tools/call *results* before the
+    # agent sees them (emails, tokens, keys, cards). Off by default.
+    redact_tool_output: bool = False
 
 
 @dataclass
@@ -57,6 +60,11 @@ class ProxyConfig:
     # agent_id. When set, unauthenticated requests are rejected and each call
     # is attributed to the token's agent. Empty = no auth (stdio sidecar / dev).
     listen_auth_tokens: dict[str, str] = field(default_factory=dict)
+    # DNS-rebinding protection for the HTTP listen: allowed Host / Origin
+    # values. When set, the MCP session manager rejects requests with other
+    # Host/Origin headers. Empty = protection off (localhost/dev).
+    listen_allowed_hosts: list[str] = field(default_factory=list)
+    listen_allowed_origins: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
         if not self.upstreams:
@@ -92,6 +100,7 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
             on_error=enf.get("on_error", "deny"),
             approval_timeout_seconds=int(enf.get("approval_timeout_seconds", 300)),
             hide_denied_tools=bool(enf.get("hide_denied_tools", True)),
+            redact_tool_output=bool(enf.get("redact_tool_output", False)),
         ),
         control_plane_url=cp.get("url"),
         api_key=cp.get("api_key"),
@@ -103,6 +112,8 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
         listen_bind=listen.get("bind", "127.0.0.1:8090"),
         listen_path=listen.get("path", "/mcp"),
         listen_auth_tokens=dict(listen.get("auth_tokens", {})),
+        listen_allowed_hosts=list(listen.get("allowed_hosts", [])),
+        listen_allowed_origins=list(listen.get("allowed_origins", [])),
     )
     config.validate()
     return config

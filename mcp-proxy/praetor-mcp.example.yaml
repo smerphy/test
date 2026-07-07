@@ -16,6 +16,7 @@ enforcement:
   on_error: deny                   # fail-closed (security default) | allow
   approval_timeout_seconds: 300
   hide_denied_tools: true          # drop policy-denied tools from tools/list
+  redact_tool_output: false        # DLP: mask PII/secrets in tool results
 
 audit_log_path: ./praetor-mcp-audit.jsonl
 
@@ -45,3 +46,7 @@ listen:
   auth_tokens:
     ${AGENT_A_TOKEN}: research-agent-1
     ${AGENT_B_TOKEN}: ops-agent-1
+  # DNS-rebinding protection: restrict Host/Origin for a public endpoint.
+  allowed_hosts: ["mcp.example.com"]
+  allowed_origins: ["https://app.example.com"]
+  # Operational metrics are exposed at GET /metrics (Prometheus text).

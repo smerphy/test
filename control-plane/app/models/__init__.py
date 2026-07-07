@@ -15,6 +15,7 @@ from app.models.alert import (
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.audit import AuditEvent
 from app.models.audit_anchor import AuditAnchor
+from app.models.break_glass import BreakGlassGrant
 from app.models.connector import ConnectorType, NotificationConnector
 from app.models.detection_rule import DetectionRule
 from app.models.event_log import LogOffset, LogRecord
@@ -30,6 +31,11 @@ from app.models.finding import (
 )
 from app.models.metric import MetricEvent
 from app.models.org import Organization, Role, User
+from app.models.playbook import (
+    PlaybookActionType,
+    PlaybookExecution,
+    ResponsePlaybook,
+)
 from app.models.policy import (
     PolicyBundle,
     PolicyRollout,
@@ -72,6 +78,7 @@ __all__ = [
     "AuditAnchor",
     "AuditDailyRollup",
     "AuditEvent",
+    "BreakGlassGrant",
     "ComplianceReport",
     "ConnectorType",
     "DetectionRule",
@@ -89,6 +96,8 @@ __all__ = [
     "MetricEvent",
     "NotificationConnector",
     "Organization",
+    "PlaybookActionType",
+    "PlaybookExecution",
     "PolicyBundle",
     "PolicyRollout",
     "PolicyVersion",
@@ -96,6 +105,7 @@ __all__ = [
     "Quarantine",
     "QuarantineSource",
     "ReportStatus",
+    "ResponsePlaybook",
     "Role",
     "RolloutState",
     "RuleSuggestion",
