@@ -58,5 +58,9 @@ def update_org(
     # Present-but-null clears the budget (tracking without a cap).
     if "monthly_cost_budget_usd" in fields:
         org.monthly_cost_budget_usd = fields["monthly_cost_budget_usd"]
+    if "enforce_cost_budget" in fields and fields["enforce_cost_budget"] is not None:
+        org.enforce_cost_budget = fields["enforce_cost_budget"]
+    if "agent_cost_quota_usd" in fields:
+        org.agent_cost_quota_usd = fields["agent_cost_quota_usd"]
     session.flush()
     return org

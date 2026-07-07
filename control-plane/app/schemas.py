@@ -51,6 +51,9 @@ class OrganizationOut(BaseModel):
     finding_webhook_url: str | None = None
     finding_min_severity: str = "high"
     monthly_cost_budget_usd: float | None = None
+    enforce_cost_budget: bool = False
+    agent_cost_quota_usd: float | None = None
+    halt_all: bool = False
 
 
 class OrganizationUpdateIn(BaseModel):
@@ -66,6 +69,10 @@ class OrganizationUpdateIn(BaseModel):
     # Monthly agent LLM spend budget (USD) powering the FinOps forecast. Send
     # null to clear (track without a budget); 0 means any spend is over budget.
     monthly_cost_budget_usd: float | None = Field(default=None, ge=0)
+    # Hard enforcement of the budget (deny agents when the org is over budget).
+    enforce_cost_budget: bool | None = None
+    # Per-agent monthly spend cap (USD); null clears it.
+    agent_cost_quota_usd: float | None = Field(default=None, ge=0)
 
 
 class UserOut(BaseModel):
