@@ -27,7 +27,7 @@ def _otlp(model: str = "claude-sonnet-4-6", agent: str = "agent-1") -> dict[str,
                             # Ignored — not a call metric.
                             {"name": "process.cpu.time", "sum": {"dataPoints": []}},
                             {
-                                "name": "praetor.llm.call",
+                                "name": "ephorate.llm.call",
                                 "sum": {
                                     "dataPoints": [
                                         {
@@ -47,11 +47,11 @@ def _otlp(model: str = "claude-sonnet-4-6", agent: str = "agent-1") -> dict[str,
                                                     "value": {"intValue": "40"},
                                                 },
                                                 {
-                                                    "key": "praetor.duration_ms",
+                                                    "key": "ephorate.duration_ms",
                                                     "value": {"intValue": "250"},
                                                 },
                                                 {
-                                                    "key": "praetor.cost_usd",
+                                                    "key": "ephorate.cost_usd",
                                                     "value": {"doubleValue": 0.01},
                                                 },
                                             ],
@@ -89,7 +89,7 @@ def test_parse_metrics_ignores_unknown_and_modelless() -> None:
                     {
                         "metrics": [
                             {
-                                "name": "praetor.llm.call",
+                                "name": "ephorate.llm.call",
                                 "gauge": {"dataPoints": [{"attributes": []}]},
                             }
                         ]

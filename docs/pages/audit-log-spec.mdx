@@ -1,6 +1,6 @@
 # Audit log spec
 
-The Praetor audit log is **append-only, fsync-on-record, Merkle-chained
+The Ephorate audit log is **append-only, fsync-on-record, Merkle-chained
 JSONL**. The local file is the source of truth; shipping to a control
 plane is a separate, at-least-once concern.
 
@@ -35,7 +35,7 @@ To recompute an event's `hash`:
 3. SHA-256 the resulting bytes; hex-encode.
 
 The next event's `prev_hash` must equal this hash. Verifying the whole
-chain is `praetor.verify_chain(path)`.
+chain is `ephorate.verify_chain(path)`.
 
 ## Shipping (control plane)
 

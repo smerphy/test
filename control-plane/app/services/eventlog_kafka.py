@@ -2,7 +2,7 @@
 
 The production swap for the SQL log at high volume. Same three-method contract
 (``append`` / ``poll`` / ``commit``), so nothing downstream changes — only
-``PRAETOR_LOG_BACKEND=kafka`` + ``PRAETOR_KAFKA_BOOTSTRAP_SERVERS``.
+``EPHORATE_LOG_BACKEND=kafka`` + ``EPHORATE_KAFKA_BOOTSTRAP_SERVERS``.
 
 ``confluent-kafka`` is an optional dependency: it is imported lazily so the
 control plane runs (and CI passes) without it. Partitioning is by
@@ -31,7 +31,7 @@ class KafkaEventLog:
         settings = get_settings()
         if not settings.kafka_bootstrap_servers:
             raise RuntimeError(
-                "log_backend=kafka requires PRAETOR_KAFKA_BOOTSTRAP_SERVERS"
+                "log_backend=kafka requires EPHORATE_KAFKA_BOOTSTRAP_SERVERS"
             )
         self._servers = settings.kafka_bootstrap_servers
         self._prefix = settings.kafka_topic_prefix

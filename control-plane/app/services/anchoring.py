@@ -92,7 +92,7 @@ def create_anchor(session: Session, org: Organization) -> AuditAnchor:
     session.flush()
 
     # Publish to the cold archive (object-store-ready) so the anchor survives a
-    # DB compromise. No-op unless PRAETOR_EVENT_ARCHIVE_DIR is configured.
+    # DB compromise. No-op unless EPHORATE_EVENT_ARCHIVE_DIR is configured.
     published = archive_events(
         "audit-anchor",
         org.id,

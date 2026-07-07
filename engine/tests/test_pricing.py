@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from praetor_engine.pricing import (
+from ephorate_engine.pricing import (
     _price_book,
     compute_cost_usd,
     lookup_pricing,
@@ -29,7 +29,7 @@ def test_unknown_model_is_zero() -> None:
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     _price_book.cache_clear()
     monkeypatch.setenv(
-        "PRAETOR_CLAUDE_PRICE_BOOK_JSON",
+        "EPHORATE_CLAUDE_PRICE_BOOK_JSON",
         '{"claude-opus-4-8": {"input": 1.0, "output": 2.0}}',
     )
     try:

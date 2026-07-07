@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from praetor import AuditError, verify_chain
+from ephorate import AuditError, verify_chain
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TS_DIST_INDEX = REPO_ROOT / "sdk-typescript" / "dist" / "index.js"

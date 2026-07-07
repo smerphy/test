@@ -16,9 +16,9 @@ Start at SDK-only; add the control plane when you outgrow `grep` over JSONL.
 ## 1. Install + first policy (5 min)
 
 ```bash
-pip install praetor          # Python SDK (pulls in praetor-engine)
+pip install ephorate          # Python SDK (pulls in ephorate-engine)
 # or
-pnpm add @praetor/sdk        # TypeScript
+pnpm add @ephorate/sdk        # TypeScript
 ```
 
 Write `bundle.yaml`. Start with your team's allowlist for what tools
@@ -39,8 +39,8 @@ policies:
 Then merge with shipped bundles in code:
 
 ```python
-from praetor_engine.bundles import load_bundle
-from praetor_engine.parser import parse_bundle_file
+from ephorate_engine.bundles import load_bundle
+from ephorate_engine.parser import parse_bundle_file
 
 policies = (
     parse_bundle_file("bundle.yaml")
@@ -52,8 +52,8 @@ policies = (
 Verify before shipping:
 
 ```bash
-praetor validate --policy bundle.yaml
-praetor eval --policy bundle.yaml --input sample_call.json
+ephorate validate --policy bundle.yaml
+ephorate eval --policy bundle.yaml --input sample_call.json
 ```
 
 ## 2. Wire into your agent
@@ -62,39 +62,39 @@ praetor eval --policy bundle.yaml --input sample_call.json
 
 ```python
 from anthropic import Anthropic
-from praetor import PraetorClient
-from praetor.middleware.anthropic import gate_response
+from ephorate import EphorateClient
+from ephorate.middleware.anthropic import gate_response
 
-praetor = PraetorClient(
+ephorate = EphorateClient(
     policies=policies,
-    audit_log_path="/var/lib/praetor/audit.jsonl",
+    audit_log_path="/var/lib/ephorate/audit.jsonl",
     default_agent_id="research-bot",
 )
 anthropic = Anthropic()
 
 while not done:
     response = anthropic.messages.create(model=..., tools=..., messages=...)
-    response = gate_response(response, client=praetor, session_id=session_id)
-    # Denied tool_use blocks carry `__praetor_blocked__` in `input`
+    response = gate_response(response, client=ephorate, session_id=session_id)
+    # Denied tool_use blocks carry `__ephorate_blocked__` in `input`
     # so the model can re-plan on the next turn rather than seeing a
     # silent drop.
 ```
 
 ### OpenAI / TypeScript
 
-Same shape. Pick `praetor.middleware.openai.gate_tool_calls` in Python
-or import from `@praetor/sdk/middleware/openai` in TS.
+Same shape. Pick `ephorate.middleware.openai.gate_tool_calls` in Python
+or import from `@ephorate/sdk/middleware/openai` in TS.
 
 ## 3. Production hardening
 
 ### 3a. Durable audit log + control-plane shipping
 
 ```python
-PraetorClient(
+EphorateClient(
     policies=policies,
-    audit_log_path="/var/lib/praetor/audit.jsonl",
-    control_plane_url="https://praetor.your-company.com",
-    api_key=os.environ["PRAETOR_API_KEY"],
+    audit_log_path="/var/lib/ephorate/audit.jsonl",
+    control_plane_url="https://ephorate.your-company.com",
+    api_key=os.environ["EPHORATE_API_KEY"],
     org_slug="acme",
     default_agent_id="research-bot",
 )
@@ -107,19 +107,19 @@ tails it, POSTs each event to `/audit/events`, and only advances its
 Verify the chain at any point:
 
 ```bash
-python -c "from pathlib import Path; from praetor import verify_chain; print(verify_chain(Path('audit.jsonl')))"
+python -c "from pathlib import Path; from ephorate import verify_chain; print(verify_chain(Path('audit.jsonl')))"
 ```
 
 ### 3b. Approvals
 
-When a `PraetorClient` is configured with a `control_plane_url`, approvals
+When a `EphorateClient` is configured with a `control_plane_url`, approvals
 are brokered through the control plane automatically — no extra wiring:
 
 ```python
-client = PraetorClient(
+client = EphorateClient(
     bundle_path="policy.yaml",
     audit_log_path="audit.jsonl",
-    control_plane_url="https://praetor.example.com",
+    control_plane_url="https://ephorate.example.com",
     api_key="cp-xxx",
     org_slug="acme",
 )
@@ -134,13 +134,13 @@ inbound webhook to the agent is required. Tune the wait with an explicit
 handler:
 
 ```python
-from praetor import ControlPlaneApprovalHandler
+from ephorate import ControlPlaneApprovalHandler
 
-PraetorClient(
+EphorateClient(
     ...,
-    control_plane_url="https://praetor.example.com",
+    control_plane_url="https://ephorate.example.com",
     approval_handler=ControlPlaneApprovalHandler(
-        "https://praetor.example.com",
+        "https://ephorate.example.com",
         api_key="cp-xxx",
         org_slug="acme",
         timeout_seconds=300,
@@ -157,7 +157,7 @@ that your own resolver calls.
 so reviewers are pinged instead of watching the dashboard:
 
 ```bash
-curl -X PATCH https://praetor.example.com/org \
+curl -X PATCH https://ephorate.example.com/org \
   -H "X-API-Key: cp-xxx" -H "X-Org-Slug: acme" \
   -d '{"approval_webhook_url": "https://hooks.slack.com/services/…"}'
 ```
@@ -165,15 +165,15 @@ curl -X PATCH https://praetor.example.com/org \
 **Approve/Deny from Slack.** The posted message includes Approve/Deny
 buttons. To make them resolve the request, create a Slack app with
 interactivity enabled, set its Request URL to
-`https://praetor.example.com/approvals/slack/actions`, and set
-`PRAETOR_SLACK_SIGNING_SECRET` on the control plane — the endpoint verifies
+`https://ephorate.example.com/approvals/slack/actions`, and set
+`EPHORATE_SLACK_SIGNING_SECRET` on the control plane — the endpoint verifies
 Slack's request signature before resolving. Without the secret the endpoint
 returns 503; resolution via the dashboard (`POST /approvals/{id}/resolve`)
 always works.
 
 **Expiry.** A pending request that no one resolves is swept to `EXPIRED`
-after `PRAETOR_APPROVAL_TTL_MINUTES` (default 60) by the
-`praetor.approvals.expire_stale` beat task, so a crashed agent's request
+after `EPHORATE_APPROVAL_TTL_MINUTES` (default 60) by the
+`ephorate.approvals.expire_stale` beat task, so a crashed agent's request
 doesn't linger and the SDK's poll terminates as a denial. Run the periodic
 sweeps with `celery -A app.celery_app beat` alongside the worker.
 
@@ -184,13 +184,13 @@ sweeps with `celery -A app.celery_app beat` alongside the worker.
 docker run -d postgres:16 ...
 docker run -d redis:7 ...
 
-export PRAETOR_DATABASE_URL=postgresql+psycopg://...
-export PRAETOR_CELERY_BROKER_URL=redis://...
-export PRAETOR_CELERY_TASK_ALWAYS_EAGER=false
-export PRAETOR_API_KEYS=cp-key-1,cp-key-2
-export PRAETOR_SESSION_SECRET=<32 random bytes>
-export PRAETOR_GITHUB_CLIENT_ID=...
-export PRAETOR_GITHUB_CLIENT_SECRET=...
+export EPHORATE_DATABASE_URL=postgresql+psycopg://...
+export EPHORATE_CELERY_BROKER_URL=redis://...
+export EPHORATE_CELERY_TASK_ALWAYS_EAGER=false
+export EPHORATE_API_KEYS=cp-key-1,cp-key-2
+export EPHORATE_SESSION_SECRET=<32 random bytes>
+export EPHORATE_GITHUB_CLIENT_ID=...
+export EPHORATE_GITHUB_CLIENT_SECRET=...
 
 alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -201,14 +201,14 @@ Point the web app at it:
 
 ```bash
 # web/.env.local
-PRAETOR_CONTROL_PLANE_URL=https://praetor.your-company.com
-PRAETOR_API_KEY=cp-key-1
-PRAETOR_ORG_SLUG=acme
+EPHORATE_CONTROL_PLANE_URL=https://ephorate.your-company.com
+EPHORATE_API_KEY=cp-key-1
+EPHORATE_ORG_SLUG=acme
 ```
 
 ```bash
-pnpm --filter praetor-web build
-pnpm --filter praetor-web start
+pnpm --filter ephorate-web build
+pnpm --filter ephorate-web start
 ```
 
 ### 3d. Bootstrap
@@ -221,7 +221,7 @@ handler creates the first org from the user's email domain.
 
 1. **Write rules in YAML, version them in git** in a `policies/`
    directory alongside your app code.
-2. **Validate in CI** with `praetor validate --policy bundle.yaml`
+2. **Validate in CI** with `ephorate validate --policy bundle.yaml`
    (exit 64 on parse / shape errors).
 3. **Push versions to the control plane** via
    `POST /bundles/{id}/versions` — the server re-validates and rejects
@@ -236,13 +236,13 @@ immutable, with PR review.
 ## 5. Compliance reporting
 
 ```bash
-curl -X POST https://praetor.your-company.com/reports/compliance \
+curl -X POST https://ephorate.your-company.com/reports/compliance \
   -H "X-API-Key: $KEY" -H "X-Org-Slug: acme" \
   -d '{"framework": "nist_ai_rmf",
        "period_start": "2026-04-01T00:00:00Z",
        "period_end":   "2026-05-01T00:00:00Z"}'
 
-curl https://.../reports/compliance/<id>/pdf -o praetor-nist.pdf
+curl https://.../reports/compliance/<id>/pdf -o ephorate-nist.pdf
 ```
 
 The PDF summarizes total decisions, deny rate, approval rate, and
@@ -255,8 +255,8 @@ your auditor.
 [ ] Pick deployment mode (SDK-only vs +control-plane vs +UI)
 [ ] Write `bundle.yaml` for your team's allowlist
 [ ] Merge with `nist_ai_rmf` (or your framework) + `agent_abuse_patterns`
-[ ] `praetor validate` in CI
-[ ] Construct `PraetorClient` in your agent's startup
+[ ] `ephorate validate` in CI
+[ ] Construct `EphorateClient` in your agent's startup
 [ ] Wrap response/completion via `gate_response` / `gate_tool_calls`
 [ ] Point `audit_log_path` at a durable location
 [ ] (Optional) Wire `control_plane_url` + `api_key`

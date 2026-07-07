@@ -59,7 +59,7 @@ class AuditEvent(IdMixin, TimestampMixin, Base):
     evaluator_version: Mapped[str] = mapped_column(String(64), nullable=False)
 
     # Data classification, derived server-side at ingest from a PII scan when
-    # `PRAETOR_CLASSIFY_TELEMETRY` is on ("restricted" if the payload carried
+    # `EPHORATE_CLASSIFY_TELEMETRY` is on ("restricted" if the payload carried
     # PII, else "standard"). Drives classification-aware retention; not part of
     # the hashed event body.
     classification: Mapped[str] = mapped_column(
@@ -70,7 +70,7 @@ class AuditEvent(IdMixin, TimestampMixin, Base):
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
     # Chain-linkage verification state. Under synchronous ingest this is True on
-    # insert; under async-verify ingest (PRAETOR_AUDIT_ASYNC_VERIFY) events land
+    # insert; under async-verify ingest (EPHORATE_AUDIT_ASYNC_VERIFY) events land
     # unverified and a background verifier flips them True in seq order (or
     # raises a tamper finding on a broken link).
     verified: Mapped[bool] = mapped_column(

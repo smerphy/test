@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PraetorClient } from "../client.js";
+import { EphorateClient } from "../client.js";
 import type { Policy } from "../types.js";
 import { gateToolCalls } from "./openai.js";
 
 function client(policies: Policy[] = []) {
-  return new PraetorClient({ policies, defaultAgentId: "agent-1" });
+  return new EphorateClient({ policies, defaultAgentId: "agent-1" });
 }
 
 const tc = (name: string, args: Record<string, unknown>, id = "call_1") => ({
@@ -59,7 +59,7 @@ describe("OpenAI middleware", () => {
       sessionId: "s",
     });
     const payload = JSON.parse(out[0]!.function.arguments);
-    expect(payload.__praetor_blocked__).toBe(true);
+    expect(payload.__ephorate_blocked__).toBe(true);
     expect(payload.policy_id).toBe("d");
   });
 

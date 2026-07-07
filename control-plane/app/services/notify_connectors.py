@@ -54,7 +54,7 @@ def _rank(sev: str) -> int:
 
 
 def _summary(finding: Finding) -> str:
-    return f"[Praetor/{finding.severity}] {finding.title}"
+    return f"[Ephorate/{finding.severity}] {finding.title}"
 
 
 def _prepare(

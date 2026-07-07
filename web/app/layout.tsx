@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Nav } from "@/components/Nav";
 
 export const metadata: Metadata = {
-  title: "Praetor Control Plane",
+  title: "Ephorate Control Plane",
   description: "Policy authoring, audit, approvals, compliance.",
 };
 

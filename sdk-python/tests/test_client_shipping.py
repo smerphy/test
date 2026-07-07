@@ -1,7 +1,7 @@
-"""PraetorClient + RemoteShipper wiring + HttpTransport.
+"""EphorateClient + RemoteShipper wiring + HttpTransport.
 
 Covers the convenience path where a caller passes `control_plane_url`
-and `audit_log_path` to PraetorClient and expects events to ship
+and `audit_log_path` to EphorateClient and expects events to ship
 automatically.
 """
 
@@ -13,11 +13,11 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import EqPredicate
-from praetor_engine.types import Decision
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import EqPredicate
+from ephorate_engine.types import Decision
 
-from praetor import HttpTransport, JsonlAuditSink, PraetorClient
+from ephorate import EphorateClient, HttpTransport, JsonlAuditSink
 
 
 def _allow_policy() -> Policy:
@@ -37,7 +37,7 @@ def test_client_constructs_shipper_when_control_plane_url_provided(
         return_value=httpx.Response(202, json={"accepted": 1, "rejected": 0, "errors": []})
     )
 
-    c = PraetorClient(
+    c = EphorateClient(
         policies=[_allow_policy()],
         audit_log_path=tmp_path / "audit.jsonl",
         control_plane_url="https://cp.example",
@@ -65,7 +65,7 @@ def test_client_constructs_shipper_when_control_plane_url_provided(
 
 def test_control_plane_url_requires_audit_log_path(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="control_plane_url requires audit_log_path"):
-        PraetorClient(
+        EphorateClient(
             policies=[_allow_policy()],
             control_plane_url="https://cp.example",
             default_agent_id="agent-1",
@@ -74,7 +74,7 @@ def test_control_plane_url_requires_audit_log_path(tmp_path: Path) -> None:
 
 def test_audit_sink_and_audit_log_path_mutually_exclusive(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="audit_sink or audit_log_path"):
-        PraetorClient(
+        EphorateClient(
             policies=[_allow_policy()],
             audit_sink=JsonlAuditSink(tmp_path / "a.jsonl"),
             audit_log_path=tmp_path / "b.jsonl",
@@ -92,7 +92,7 @@ def test_http_transport_raises_on_server_rejection(tmp_path: Path) -> None:
 
     # Build an event by hand to exercise the transport directly.
     sink = JsonlAuditSink(tmp_path / "audit.jsonl")
-    from praetor_engine.types import (
+    from ephorate_engine.types import (
         AgentInfo,
         DecisionResult,
         PolicyInput,

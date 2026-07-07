@@ -1,4 +1,4 @@
-# Praetor
+# Ephorate
 
 Enterprise Claude monitoring + alerting + runtime policy enforcement
 for AI agents.
@@ -47,9 +47,9 @@ and compliance teams work off one source of truth. Apache 2.0.
 ```
 engine/          policy engine (Python): types, predicate AST, evaluator,
                  parser, CLI, JSON-schema export, starter compliance bundles
-sdk-python/      praetor: Anthropic/OpenAI middleware, audit log, approval flow,
+sdk-python/      ephorate: Anthropic/OpenAI middleware, audit log, approval flow,
                  control-plane shipping
-sdk-typescript/  @praetor/sdk: TS port with feature parity for the runtime path
+sdk-typescript/  @ephorate/sdk: TS port with feature parity for the runtime path
 control-plane/   FastAPI + SQLAlchemy + Alembic + Celery: ingestion, search,
                  approvals, compliance reports (with PDF), OAuth
 web/             Next.js 15 control plane UI
@@ -60,17 +60,17 @@ examples/        end-to-end demo agents
 ## Quickstart (Python SDK gating an Anthropic agent)
 
 ```bash
-pip install praetor anthropic
+pip install ephorate anthropic
 ```
 
 ```python
-from praetor import PraetorClient, load_bundle  # noqa
-from praetor.middleware.anthropic import gate_response
+from ephorate import EphorateClient, load_bundle  # noqa
+from ephorate.middleware.anthropic import gate_response
 
-client = PraetorClient(
+client = EphorateClient(
     bundle_path="policy.yaml",
     audit_log_path="audit.jsonl",
-    control_plane_url="https://praetor.example.com",  # optional
+    control_plane_url="https://ephorate.example.com",  # optional
     api_key="cp-xxx",
     org_slug="acme",
     default_agent_id="research-bot",
@@ -98,9 +98,9 @@ TS workspace via pnpm:
 
 ```bash
 pnpm install
-pnpm --filter @praetor/sdk test
-pnpm --filter praetor-web build
-pnpm --filter praetor-docs build
+pnpm --filter @ephorate/sdk test
+pnpm --filter ephorate-web build
+pnpm --filter ephorate-docs build
 ```
 
 ## Testing

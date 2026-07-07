@@ -1,6 +1,6 @@
-# Contributing to Praetor
+# Contributing to Ephorate
 
-Thanks for your interest. Praetor is intentionally a small, boring
+Thanks for your interest. Ephorate is intentionally a small, boring
 stack — most contributions are policy bundles, framework mappings,
 new SDK middlewares, and bug fixes. Larger architectural changes need
 a design discussion in an issue first.
@@ -31,9 +31,9 @@ Monorepo. Python packages via [`uv`](https://docs.astral.sh/uv/)
 workspaces, TS / web via pnpm workspaces.
 
 ```
-engine/          praetor-engine — policy engine + CLI + bundles
-sdk-python/      praetor — Anthropic/OpenAI middleware, audit, approvals
-sdk-typescript/  @praetor/sdk — TS port of the runtime path
+engine/          ephorate-engine — policy engine + CLI + bundles
+sdk-python/      ephorate — Anthropic/OpenAI middleware, audit, approvals
+sdk-typescript/  @ephorate/sdk — TS port of the runtime path
 control-plane/   FastAPI service: ingestion, search, approvals, reports
 web/             Next.js 15 control-plane UI
 docs/            Nextra docs site
@@ -59,11 +59,11 @@ pnpm install
 uv run pytest engine sdk-python control-plane
 
 # TypeScript: SDK
-pnpm --filter @praetor/sdk test
+pnpm --filter @ephorate/sdk test
 
 # Builds
-pnpm --filter praetor-web build
-pnpm --filter praetor-docs build
+pnpm --filter ephorate-web build
+pnpm --filter ephorate-docs build
 ```
 
 Each Python package has its own `pyproject.toml` with strict mypy +
@@ -78,7 +78,7 @@ ruff. CI runs the matrix on every PR.
 - [ ] `uv run ruff check <pkg>` and `uv run mypy <pkg>` clean.
 - [ ] If you changed the audit-event shape or the predicate AST,
       regenerate the JSON schemas
-      (`uv run python -m praetor_engine.schema --out engine/schemas/`)
+      (`uv run python -m ephorate_engine.schema --out engine/schemas/`)
       and commit the result.
 - [ ] If you added a public symbol, export it from the package's
       `__init__.py` and document it in `docs/`.
@@ -87,20 +87,20 @@ ruff. CI runs the matrix on every PR.
 
 ## Adding a policy to a compliance bundle
 
-1. Edit the appropriate `.praetor` file under
-   `engine/praetor_engine/bundles/`.
+1. Edit the appropriate `.ephorate` file under
+   `engine/ephorate_engine/bundles/`.
 2. Tag the rule with the framework control in `metadata` (e.g.
    `nist_ai_rmf: GOVERN-1.1`) so compliance reports surface it.
 3. Add a red-team test case to `engine/tests/test_red_team.py` (for
    `agent_abuse_patterns`) or `engine/tests/test_bundles.py`.
-4. Run `praetor validate --policy engine/praetor_engine/bundles/<file>`
+4. Run `ephorate validate --policy engine/ephorate_engine/bundles/<file>`
    to confirm it parses.
 
 ## Reporting bugs
 
 Use GitHub Issues. Include:
 
-- Praetor version (`pip show praetor-engine`)
+- Ephorate version (`pip show ephorate-engine`)
 - A minimal reproducing input (`PolicyInput` JSON + bundle YAML)
 - Expected vs. actual decision
 

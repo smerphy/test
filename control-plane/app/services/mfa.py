@@ -7,7 +7,7 @@ from app.services import totp
 from app.services.crypto import seal, unseal
 
 
-def begin_enroll(user: User, *, issuer: str = "Praetor") -> tuple[str, str]:
+def begin_enroll(user: User, *, issuer: str = "Ephorate") -> tuple[str, str]:
     """Generate + store (pending) a TOTP secret. Returns (secret, otpauth_uri).
     MFA is not active until `confirm` succeeds."""
     secret = totp.generate_secret()

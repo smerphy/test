@@ -1,7 +1,7 @@
 /**
  * Pure TypeScript port of the engine's evaluator.
  *
- * Same contract as `praetor_engine.evaluator.Evaluator`:
+ * Same contract as `ephorate_engine.evaluator.Evaluator`:
  *   - side-effect-free
  *   - highest-precedence wins (deny > require_approval > transform > allow)
  *   - first-match within a tier

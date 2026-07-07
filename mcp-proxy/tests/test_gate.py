@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from praetor import PraetorClient
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import EqPredicate
-from praetor_engine.types import Decision
+from ephorate import EphorateClient
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import EqPredicate
+from ephorate_engine.types import Decision
 
-from praetor_mcp.gate import PolicyGate
+from ephorate_mcp.gate import PolicyGate
 
 
 def _policies() -> list[Policy]:
@@ -37,7 +37,7 @@ def _policies() -> list[Policy]:
 
 
 def _gate(on_error: str = "deny") -> PolicyGate:
-    client = PraetorClient(policies=_policies(), default_agent_id="agent-1")
+    client = EphorateClient(policies=_policies(), default_agent_id="agent-1")
     return PolicyGate(client, on_error=on_error)
 
 

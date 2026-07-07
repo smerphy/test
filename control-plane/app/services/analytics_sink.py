@@ -9,7 +9,7 @@ Postgres store that serves point/analyst queries. Backends:
                    friendly, queryable by DuckDB/Athena/BigQuery).
 * ``clickhouse`` — insert into ClickHouse (see ``analytics_sink_clickhouse``).
 
-Selected by ``PRAETOR_ANALYTICS_SINK``. Kept behind a tiny protocol so the
+Selected by ``EPHORATE_ANALYTICS_SINK``. Kept behind a tiny protocol so the
 consumer never knows which backend is live.
 """
 

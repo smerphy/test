@@ -1,7 +1,7 @@
 {
-  "name": "@praetor/sdk",
+  "name": "@ephorate/sdk",
   "version": "0.1.0",
-  "description": "Praetor TypeScript SDK: policy-gated tool calls for AI agents.",
+  "description": "Ephorate TypeScript SDK: policy-gated tool calls for AI agents.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

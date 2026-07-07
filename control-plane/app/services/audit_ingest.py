@@ -9,7 +9,7 @@ data.
 
 from __future__ import annotations
 
-from praetor_engine.audit_hash import GENESIS_HASH, compute_hash
+from ephorate_engine.audit_hash import GENESIS_HASH, compute_hash
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ from app.settings import get_settings
 
 def _verify_hash(event: AuditEventIn) -> None:
     # Use the same canonicalization as the SDK writer (shared via
-    # praetor_engine.audit_hash) so any conformant writer's events verify.
+    # ephorate_engine.audit_hash) so any conformant writer's events verify.
     body = event.model_dump(mode="json", exclude={"hash"})
     expected = compute_hash(body)
     if expected != event.hash:

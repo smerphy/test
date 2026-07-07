@@ -26,7 +26,7 @@ from app.settings import Settings, get_settings
 def _check_api_key(api_key: str | None, settings: Settings) -> None:
     if not settings.api_keys:
         # No keys configured. Only allow-all in explicit dev mode; otherwise
-        # fail closed so a deploy that forgets PRAETOR_API_KEYS is not silently
+        # fail closed so a deploy that forgets EPHORATE_API_KEYS is not silently
         # open to anonymous, any-tenant access.
         if settings.dev_mode:
             return
@@ -175,7 +175,7 @@ def current_principal(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=(
                         "API key is not scoped to an organization; "
-                        "configure PRAETOR_API_KEY_ORGS"
+                        "configure EPHORATE_API_KEY_ORGS"
                     ),
                 )
             target_slug = x_org_slug

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from praetor.client import PraetorClient
+from ephorate.client import EphorateClient
 
 
 def _capturing_client(captured: list[dict]) -> httpx.Client:
@@ -19,7 +19,7 @@ def _capturing_client(captured: list[dict]) -> httpx.Client:
 
 def test_heartbeat_posts_agent_info() -> None:
     captured: list[dict] = []
-    client = PraetorClient(policies=[], default_agent_id="research-bot")
+    client = EphorateClient(policies=[], default_agent_id="research-bot")
     # No control plane wired; inject heartbeat plumbing directly.
     client._heartbeat_url = "http://cp/agents/heartbeat"
     client._heartbeat_client = _capturing_client(captured)
@@ -33,7 +33,7 @@ def test_heartbeat_posts_agent_info() -> None:
 
 
 def test_heartbeat_is_noop_without_control_plane() -> None:
-    client = PraetorClient(policies=[], default_agent_id="a")
+    client = EphorateClient(policies=[], default_agent_id="a")
     assert client.heartbeat() is None  # no url configured -> silent no-op
 
 
@@ -41,7 +41,7 @@ def test_heartbeat_swallows_errors() -> None:
     def boom(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("down")
 
-    client = PraetorClient(policies=[], default_agent_id="a")
+    client = EphorateClient(policies=[], default_agent_id="a")
     client._heartbeat_url = "http://cp/agents/heartbeat"
     client._heartbeat_client = httpx.Client(transport=httpx.MockTransport(boom))
     # Must not raise.

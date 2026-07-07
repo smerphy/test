@@ -112,7 +112,7 @@ def _notify_budget(org: Organization, usage: AIUsage, budget: float) -> None:
     if not is_safe_webhook_url(org.finding_webhook_url):
         return
     payload = {
-        "type": "praetor.ai.budget_exceeded",
+        "type": "ephorate.ai.budget_exceeded",
         "org": org.slug,
         "month": usage.month,
         "spent_usd": round(usage.cost_usd, 4),

@@ -7,7 +7,7 @@ Raw events older than the retention window are aggregated into
 in the rollups (and, if configured, at full fidelity in the cold archive);
 the hot table stays small and fast.
 
-Retention is opt-in (`PRAETOR_AUDIT_RETENTION_DAYS`); unset = keep raw forever.
+Retention is opt-in (`EPHORATE_AUDIT_RETENTION_DAYS`); unset = keep raw forever.
 Each pass is bounded by `retention_batch_size` and is safe to re-run — it only
 deletes rows it has already rolled up, so the scheduled task simply repeats
 until caught up.

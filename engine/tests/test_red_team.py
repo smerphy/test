@@ -5,7 +5,7 @@ and assert the evaluator returns the expected `Decision`. These are
 fixtures (not prompts to a model) — they exercise the policy engine's
 ability to catch the abuse pattern, nothing else.
 
-If a new rule is added to `agent_abuse_patterns.praetor`, add a
+If a new rule is added to `agent_abuse_patterns.ephorate`, add a
 matching case here. If a test in this file goes red, either the rule
 regressed or the abuse shape it targets changed.
 """
@@ -16,9 +16,9 @@ from typing import Any
 
 import pytest
 
-from praetor_engine.bundles import load_bundle
-from praetor_engine.evaluator import Evaluator
-from praetor_engine.types import (
+from ephorate_engine.bundles import load_bundle
+from ephorate_engine.evaluator import Evaluator
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     PolicyInput,
@@ -114,7 +114,7 @@ class TestCredentialUrls:
         assert result.decision is Decision.TRANSFORM
         assert result.matched_policy_id == "abuse-redact-credential-query-params"
         assert result.suggested_transform == {
-            "url": "<praetor-redacted-credential-bearing-url>"
+            "url": "<ephorate-redacted-credential-bearing-url>"
         }
 
     def test_basic_auth_in_url_is_stripped(self, evaluator: Evaluator) -> None:
@@ -126,7 +126,7 @@ class TestCredentialUrls:
         )
         assert result.decision is Decision.TRANSFORM
         assert result.matched_policy_id == "abuse-redact-basic-auth-in-url"
-        assert result.suggested_transform == {"url": "<praetor-stripped-basic-auth>"}
+        assert result.suggested_transform == {"url": "<ephorate-stripped-basic-auth>"}
 
 
 # ---------------------------------------------------------------------------
@@ -272,9 +272,9 @@ class TestPiiEgress:
         assert result.decision is Decision.TRANSFORM
         assert result.matched_policy_id == "abuse-redact-credit-card-pan"
         assert result.suggested_transform == {
-            "body": "<praetor-redacted-pan>",
-            "content": "<praetor-redacted-pan>",
-            "text": "<praetor-redacted-pan>",
+            "body": "<ephorate-redacted-pan>",
+            "content": "<ephorate-redacted-pan>",
+            "text": "<ephorate-redacted-pan>",
         }
 
 
@@ -388,21 +388,21 @@ class TestAuditTampering:
         assert result.decision is Decision.DENY
         assert result.matched_policy_id == "abuse-deny-log-group-deletion"
 
-    def test_praetor_self_tampering_by_name_denied(
+    def test_ephorate_self_tampering_by_name_denied(
         self, evaluator: Evaluator
     ) -> None:
-        result = evaluator.evaluate(_input("praetor.disable_policy"))
+        result = evaluator.evaluate(_input("ephorate.disable_policy"))
         assert result.decision is Decision.DENY
-        assert result.matched_policy_id == "abuse-deny-praetor-self-tampering"
+        assert result.matched_policy_id == "abuse-deny-ephorate-self-tampering"
 
-    def test_praetor_self_tampering_via_file_path_denied(
+    def test_ephorate_self_tampering_via_file_path_denied(
         self, evaluator: Evaluator
     ) -> None:
         result = evaluator.evaluate(
-            _input("fs.unlink", {"path": "/var/lib/praetor/audit.jsonl"})
+            _input("fs.unlink", {"path": "/var/lib/ephorate/audit.jsonl"})
         )
         assert result.decision is Decision.DENY
-        assert result.matched_policy_id == "abuse-deny-praetor-self-tampering"
+        assert result.matched_policy_id == "abuse-deny-ephorate-self-tampering"
 
 
 # ---------------------------------------------------------------------------

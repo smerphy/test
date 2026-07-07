@@ -1,7 +1,7 @@
 """Background tasks bound to Celery.
 
 In production these run on the Celery worker (`celery -A app.celery_app
-worker`). In tests, `PRAETOR_CELERY_TASK_ALWAYS_EAGER=true` (the
+worker`). In tests, `EPHORATE_CELERY_TASK_ALWAYS_EAGER=true` (the
 default) routes them synchronously, so router code can call `.delay()`
 in both environments without branching.
 """
@@ -29,7 +29,7 @@ from app.services.threat_intel import sync_feed
 from app.settings import get_settings
 
 
-@celery_app.task(name="praetor.audit.process_batch")
+@celery_app.task(name="ephorate.audit.process_batch")
 def process_audit_batch_task(
     org_id: str, events: list[dict[str, object]]
 ) -> dict[str, int]:
@@ -51,7 +51,7 @@ def process_audit_batch_task(
     return {"accepted": accepted, "rejected": rejected}
 
 
-@celery_app.task(name="praetor.metrics.process_batch")
+@celery_app.task(name="ephorate.metrics.process_batch")
 def process_metric_batch_task(
     org_id: str, events: list[dict[str, object]]
 ) -> dict[str, int]:
@@ -73,7 +73,7 @@ def process_metric_batch_task(
     return {"accepted": accepted, "rejected": rejected}
 
 
-@celery_app.task(name="praetor.reports.generate")
+@celery_app.task(name="ephorate.reports.generate")
 def generate_report_task(report_id: str) -> None:
     """Generate a compliance report by id. Idempotent for the COMPLETE case."""
     with SessionLocal() as session:
@@ -84,14 +84,14 @@ def generate_report_task(report_id: str) -> None:
         session.commit()
 
 
-@celery_app.task(name="praetor.approvals.notify")
+@celery_app.task(name="ephorate.approvals.notify")
 def notify_approval_task(approval_id: str) -> bool:
     """Post a pending-approval notification to the org webhook. Best-effort."""
     with SessionLocal() as session:
         return deliver_approval_notification(session, approval_id)
 
 
-@celery_app.task(name="praetor.approvals.expire_stale")
+@celery_app.task(name="ephorate.approvals.expire_stale")
 def expire_stale_approvals_task() -> int:
     """Sweep expired pending approvals. Schedule via Celery beat (~every 60s)."""
     with SessionLocal() as session:
@@ -100,7 +100,7 @@ def expire_stale_approvals_task() -> int:
     return expired
 
 
-@celery_app.task(name="praetor.detections.run_all")
+@celery_app.task(name="ephorate.detections.run_all")
 def run_detections_task() -> dict[str, int]:
     """Run the detection engine across every org. Schedule via Celery beat."""
     from app.models import Finding
@@ -132,7 +132,7 @@ def run_detections_task() -> dict[str, int]:
     }
 
 
-@celery_app.task(name="praetor.findings.dispatch")
+@celery_app.task(name="ephorate.findings.dispatch")
 def dispatch_finding_task(finding_id: str) -> dict[str, int]:
     """Forward + notify a single finding to the org's SIEM/webhook and typed
     connectors.
@@ -161,7 +161,7 @@ def dispatch_finding_task(finding_id: str) -> dict[str, int]:
     return {"forwarded": forwarded, "notified": notified}
 
 
-@celery_app.task(name="praetor.audit.anchor_all")
+@celery_app.task(name="ephorate.audit.anchor_all")
 def anchor_audit_task() -> dict[str, int]:
     """Anchor every org's audit chain heads. Schedule via Celery beat."""
     from app.services.anchoring import create_anchor
@@ -176,7 +176,7 @@ def anchor_audit_task() -> dict[str, int]:
     return {"orgs_anchored": anchored}
 
 
-@celery_app.task(name="praetor.ai.sweep_findings")
+@celery_app.task(name="ephorate.ai.sweep_findings")
 def ai_sweep_findings_task() -> dict[str, int]:
     """Proactively surface AI findings across every AI-enabled org.
 
@@ -215,12 +215,12 @@ def ai_sweep_findings_task() -> dict[str, int]:
     return {"orgs_swept": orgs_swept, "created": created, "notified": notified}
 
 
-@celery_app.task(name="praetor.telemetry.apply_retention")
+@celery_app.task(name="ephorate.telemetry.apply_retention")
 def apply_retention_task() -> dict[str, int]:
     """Roll up + prune aged raw audit events across every org.
 
     Schedule via Celery beat (daily). No-op unless
-    `PRAETOR_AUDIT_RETENTION_DAYS` is set. Loops each org until caught up so a
+    `EPHORATE_AUDIT_RETENTION_DAYS` is set. Loops each org until caught up so a
     large backlog is drained across bounded batches within one run.
     """
     settings = get_settings()
@@ -250,7 +250,7 @@ def apply_retention_task() -> dict[str, int]:
     return {"rolled": rolled, "pruned": pruned, "orgs": orgs}
 
 
-@celery_app.task(name="praetor.ueba.rebuild_baselines")
+@celery_app.task(name="ephorate.ueba.rebuild_baselines")
 def rebuild_baselines_task() -> dict[str, int]:
     """Rebuild every org's per-agent behavioral baselines. Beat: daily."""
     from app.services.baseline import rebuild_baselines
@@ -263,7 +263,7 @@ def rebuild_baselines_task() -> dict[str, int]:
     return {"agents": agents}
 
 
-@celery_app.task(name="praetor.ueba.detect_drift")
+@celery_app.task(name="ephorate.ueba.detect_drift")
 def detect_drift_task() -> dict[str, int]:
     """Detect behavioral drift across every org, raising findings. Beat."""
     from app.services.baseline import detect_drift
@@ -276,12 +276,12 @@ def detect_drift_task() -> dict[str, int]:
     return {"findings": findings}
 
 
-@celery_app.task(name="praetor.audit.verify_chains")
+@celery_app.task(name="ephorate.audit.verify_chains")
 def verify_audit_chains_task() -> dict[str, int]:
     """Verify pending audit-chain linkage across every org (async-verify mode).
 
     Schedule via Celery beat. No-op unless events were ingested unverified
-    (PRAETOR_AUDIT_ASYNC_VERIFY). Flags tamper as CRITICAL findings.
+    (EPHORATE_AUDIT_ASYNC_VERIFY). Flags tamper as CRITICAL findings.
     """
     from app.services.audit_verify import verify_pending
 
@@ -299,7 +299,7 @@ def verify_audit_chains_task() -> dict[str, int]:
     return {"verified": verified, "tampered": tampered}
 
 
-@celery_app.task(name="praetor.log.consume")
+@celery_app.task(name="ephorate.log.consume")
 def consume_log_task() -> dict[str, int]:
     """Drain the event log into the hot store + analytics tier (CQRS).
 
@@ -313,12 +313,12 @@ def consume_log_task() -> dict[str, int]:
     return run_all_consumers(max_records=settings.consumer_batch_size)
 
 
-@celery_app.task(name="praetor.audit.archive")
+@celery_app.task(name="ephorate.audit.archive")
 def archive_audit_task() -> dict[str, int]:
     """Write not-yet-archived audit events to the authoritative cold tier.
 
     Schedule via Celery beat. No-op unless a cold archive is configured
-    (PRAETOR_EVENT_ARCHIVE_DIR). Loops each org until caught up.
+    (EPHORATE_EVENT_ARCHIVE_DIR). Loops each org until caught up.
     """
     from app.services.archive import archive_pending
 
@@ -341,7 +341,7 @@ def archive_audit_task() -> dict[str, int]:
     return {"archived": archived, "orgs": orgs}
 
 
-@celery_app.task(name="praetor.threat_intel.sync_due")
+@celery_app.task(name="ephorate.threat_intel.sync_due")
 def sync_threat_feeds_task() -> dict[str, int]:
     """Sync every enabled remote feed whose refresh interval has elapsed.
 
@@ -388,7 +388,7 @@ def sync_threat_feeds_task() -> dict[str, int]:
     }
 
 
-@celery_app.task(name="praetor.alerts.evaluate_all")
+@celery_app.task(name="ephorate.alerts.evaluate_all")
 def evaluate_all_alerts_task() -> dict[str, int]:
     """Evaluate every enabled alert rule across every org.
 

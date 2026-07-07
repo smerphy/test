@@ -67,7 +67,7 @@ export async function Nav() {
     <nav className="border-b border-border bg-muted/30">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
         <Link href="/" className="font-mono text-sm font-semibold tracking-tight">
-          praetor<span className="text-foreground/40">/cp</span>
+          ephorate<span className="text-foreground/40">/cp</span>
         </Link>
         <ul className="flex items-center gap-4 text-sm">
           {links.map((l) => (

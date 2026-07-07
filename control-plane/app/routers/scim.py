@@ -2,7 +2,7 @@
 
 Lets an IdP (Okta, Azure AD, OneLogin, …) create, update, and — critically —
 deprovision users automatically. Authenticated with a per-org bearer token
-(`Authorization: Bearer <token>` mapped to an org via PRAETOR_SCIM_TOKENS).
+(`Authorization: Bearer <token>` mapped to an org via EPHORATE_SCIM_TOKENS).
 Deprovisioning (active=false / DELETE) also revokes the user's live sessions.
 """
 

@@ -29,13 +29,13 @@ jobs:
 
       - name: Sync dependencies
         working-directory: .
-        run: uv sync --package praetor-engine --extra dev
+        run: uv sync --package ephorate-engine --extra dev
 
       - name: Ruff
-        run: uv run ruff check praetor_engine tests
+        run: uv run ruff check ephorate_engine tests
 
       - name: Mypy (strict)
-        run: uv run mypy praetor_engine
+        run: uv run mypy ephorate_engine
 
       - name: Pytest with coverage gate (>=85%)
-        run: uv run pytest --cov=praetor_engine --cov-report=term-missing --cov-fail-under=85
+        run: uv run pytest --cov=ephorate_engine --cov-report=term-missing --cov-fail-under=85

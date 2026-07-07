@@ -13,19 +13,19 @@ import pytest
 
 pytest.importorskip("mcp")
 
+from ephorate import EphorateClient
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import EqPredicate
+from ephorate_engine.types import Decision
 from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.shared.memory import (
     create_connected_server_and_client_session,
 )
-from praetor import PraetorClient
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import EqPredicate
-from praetor_engine.types import Decision
 
-from praetor_mcp.config import parse_config
-from praetor_mcp.gate import PolicyGate
-from praetor_mcp.server import PolicyBlocked, ProxyServer
+from ephorate_mcp.config import parse_config
+from ephorate_mcp.gate import PolicyGate
+from ephorate_mcp.server import PolicyBlocked, ProxyServer
 
 
 def _mock_upstream() -> Server:
@@ -58,7 +58,7 @@ def _config() -> Any:
 
 
 def _gate(policies: list[Policy]) -> PolicyGate:
-    return PolicyGate(PraetorClient(policies=policies, default_agent_id="a"))
+    return PolicyGate(EphorateClient(policies=policies, default_agent_id="a"))
 
 
 def _allow(name: str) -> Policy:

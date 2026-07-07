@@ -2,7 +2,7 @@
 
 When a new finding at or above the org's `finding_min_severity` is raised,
 it is POSTed to the org's `finding_webhook_url` as a normalized JSON event
-(OCSF-flavored) so Praetor plugs into existing security stacks (Splunk HEC,
+(OCSF-flavored) so Ephorate plugs into existing security stacks (Splunk HEC,
 Sentinel, Elastic, a SOAR runbook, or Slack). Delivery is best-effort and
 egress-guarded (no SSRF to internal addresses).
 """
@@ -56,11 +56,11 @@ def build_finding_event(finding: Finding, org: Organization) -> dict[str, Any]:
             "types": [str(finding.category)],
         },
         "metadata": {
-            "product": {"name": "Praetor", "vendor_name": "Praetor"},
+            "product": {"name": "Ephorate", "vendor_name": "Ephorate"},
             "org_id": org.id,
             "org_slug": org.slug,
         },
-        "praetor": {
+        "ephorate": {
             "rule_id": finding.rule_id,
             "category": str(finding.category),
             "agent_id": finding.agent_id,

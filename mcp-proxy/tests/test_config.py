@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from praetor_mcp.config import build_client, load_config, parse_config
+from ephorate_mcp.config import build_client, load_config, parse_config
 
 
 def _doc() -> dict:
@@ -50,7 +50,7 @@ def test_validation_errors() -> None:
 
 
 def test_load_config_from_file(tmp_path: Path) -> None:
-    path = tmp_path / "praetor-mcp.yaml"
+    path = tmp_path / "ephorate-mcp.yaml"
     path.write_text(yaml.safe_dump(_doc()))
     cfg = load_config(path)
     assert cfg.org_slug == "acme"

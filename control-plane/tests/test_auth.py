@@ -112,7 +112,7 @@ def test_create_app_refuses_default_session_secret_outside_dev_mode(
     s = get_settings()
     monkeypatch.setattr(s, "dev_mode", False)
     monkeypatch.setattr(s, "session_secret", DEFAULT_SESSION_SECRET)
-    with pytest.raises(RuntimeError, match="PRAETOR_SESSION_SECRET"):
+    with pytest.raises(RuntimeError, match="EPHORATE_SESSION_SECRET"):
         create_app()
 
 

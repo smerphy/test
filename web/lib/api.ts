@@ -1,15 +1,15 @@
 /**
- * Typed client for the Praetor control plane HTTP API.
+ * Typed client for the Ephorate control plane HTTP API.
  *
- * Reads `PRAETOR_CONTROL_PLANE_URL` and `PRAETOR_API_KEY` from the
- * environment. The org slug is sourced from `PRAETOR_ORG_SLUG` (single-
+ * Reads `EPHORATE_CONTROL_PLANE_URL` and `EPHORATE_API_KEY` from the
+ * environment. The org slug is sourced from `EPHORATE_ORG_SLUG` (single-
  * tenant MVP); multi-tenancy will switch to a session-derived value.
  */
 
 const BASE_URL =
-  process.env.PRAETOR_CONTROL_PLANE_URL ?? "http://localhost:8000";
-const API_KEY = process.env.PRAETOR_API_KEY ?? "";
-const ORG_SLUG = process.env.PRAETOR_ORG_SLUG ?? "acme";
+  process.env.EPHORATE_CONTROL_PLANE_URL ?? "http://localhost:8000";
+const API_KEY = process.env.EPHORATE_API_KEY ?? "";
+const ORG_SLUG = process.env.EPHORATE_ORG_SLUG ?? "acme";
 
 export interface Project {
   id: string;

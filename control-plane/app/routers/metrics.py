@@ -145,10 +145,10 @@ def prometheus_exposition(
     """Prometheus text exposition format for the calling org.
 
     Configure your scraper with the X-API-Key + X-Org-Slug headers (or
-    OAuth session). Series exposed: praetor_requests_total,
-    praetor_tokens_total, praetor_cost_usd_total,
-    praetor_request_duration_ms_summary, praetor_alert_rules,
-    praetor_alert_events_total.
+    OAuth session). Series exposed: ephorate_requests_total,
+    ephorate_tokens_total, ephorate_cost_usd_total,
+    ephorate_request_duration_ms_summary, ephorate_alert_rules,
+    ephorate_alert_events_total.
     """
     body = render_prometheus(session, org_id=org.id)
     return Response(

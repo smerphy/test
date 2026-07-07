@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from praetor_engine.audit_hash import GENESIS_HASH
+from ephorate_engine.audit_hash import GENESIS_HASH
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

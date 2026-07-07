@@ -59,7 +59,7 @@ def ingest_events(
         except ValueError as exc:
             errors.append(f"seq={raw.seq}: {exc}")
     # Archival to the cold tier is driven reliably from committed rows by the
-    # `praetor.audit.archive` task (POST /telemetry/archive/run to force one),
+    # `ephorate.audit.archive` task (POST /telemetry/archive/run to force one),
     # not best-effort from this request — see app.services.archive.
     return AuditIngestResult(
         accepted=accepted, rejected=len(events) - accepted, errors=errors
@@ -152,7 +152,7 @@ def export_audit(
     limit: Annotated[int, Query(ge=1, le=100_000)] = 10_000,
 ) -> Response:
     """Stream the full audit chain as NDJSON for independent verification.
-    The latest anchor root is returned in the `X-Praetor-Audit-Root` header."""
+    The latest anchor root is returned in the `X-Ephorate-Audit-Root` header."""
     events = list(
         session.execute(
             select(AuditEvent)
@@ -174,7 +174,7 @@ def export_audit(
         content=body,
         media_type="application/x-ndjson",
         headers={
-            "X-Praetor-Audit-Root": latest or "",
-            "Content-Disposition": "attachment; filename=praetor-audit-export.ndjson",
+            "X-Ephorate-Audit-Root": latest or "",
+            "Content-Disposition": "attachment; filename=ephorate-audit-export.ndjson",
         },
     )

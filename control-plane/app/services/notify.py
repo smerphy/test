@@ -20,10 +20,10 @@ from app.services.egress import is_safe_webhook_url
 
 def build_approval_payload(approval: ApprovalRequest) -> dict[str, Any]:
     """A Slack-incoming-webhook-compatible payload (also fine for a generic
-    JSON webhook — the structured `praetor` block carries the raw fields)."""
+    JSON webhook — the structured `ephorate` block carries the raw fields)."""
     return {
         "text": (
-            f":lock: Praetor approval required for `{approval.tool_name}` "
+            f":lock: Ephorate approval required for `{approval.tool_name}` "
             f"(agent={approval.agent_id})"
         ),
         "blocks": [
@@ -60,7 +60,7 @@ def build_approval_payload(approval: ApprovalRequest) -> dict[str, Any]:
                 ],
             },
         ],
-        "praetor": {
+        "ephorate": {
             "approval_id": approval.id,
             "agent_id": approval.agent_id,
             "session_id": approval.session_id,

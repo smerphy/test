@@ -29,13 +29,13 @@ jobs:
 
       - name: Sync dependencies
         working-directory: .
-        run: uv sync --package praetor-mcp --extra dev
+        run: uv sync --package ephorate-mcp --extra dev
 
       - name: Ruff
-        run: uv run ruff check praetor_mcp tests
+        run: uv run ruff check ephorate_mcp tests
 
       - name: Mypy (strict)
-        run: uv run mypy praetor_mcp
+        run: uv run mypy ephorate_mcp
 
       - name: Pytest with coverage gate (>=90%)
-        run: uv run pytest --cov=praetor_mcp --cov-report=term-missing --cov-fail-under=90
+        run: uv run pytest --cov=ephorate_mcp --cov-report=term-missing --cov-fail-under=90

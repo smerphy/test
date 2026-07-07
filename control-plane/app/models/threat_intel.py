@@ -35,7 +35,7 @@ from app.models._mixins import IdMixin, TimestampMixin
 
 
 class IndicatorType(StrEnum):
-    """Kinds of indicator Praetor can match against agent activity."""
+    """Kinds of indicator Ephorate can match against agent activity."""
 
     DOMAIN = "domain"
     IP = "ip"

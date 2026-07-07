@@ -1,6 +1,6 @@
 /** OpenAI Chat Completions middleware. */
 
-import type { PraetorClient, EvaluateOptions } from "../client.js";
+import type { EphorateClient, EvaluateOptions } from "../client.js";
 
 interface FunctionCall {
   name: string;
@@ -25,11 +25,11 @@ function parseArgs(raw: string | undefined): Record<string, unknown> {
   }
 }
 
-const DENY_TEMPLATE = { __praetor_blocked__: true } as const;
+const DENY_TEMPLATE = { __ephorate_blocked__: true } as const;
 
 export function gateToolCalls(
   calls: ToolCall[],
-  opts: { client: PraetorClient } & EvaluateOptions,
+  opts: { client: EphorateClient } & EvaluateOptions,
 ): ToolCall[] {
   const { client, ...evalOpts } = opts;
   return calls.map((call) => {

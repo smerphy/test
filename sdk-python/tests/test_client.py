@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import AlwaysPredicate, EqPredicate
-from praetor_engine.types import Decision, PolicyInput
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import AlwaysPredicate, EqPredicate
+from ephorate_engine.types import Decision, PolicyInput
 
-from praetor.approval import ApprovalHandler
-from praetor.audit import AuditEvent, NullAuditSink
-from praetor.client import PraetorClient
-from praetor.errors import PolicyDenied
+from ephorate.approval import ApprovalHandler
+from ephorate.audit import AuditEvent, NullAuditSink
+from ephorate.client import EphorateClient
+from ephorate.errors import PolicyDenied
 
 
 def _allow_policy() -> Policy:
@@ -65,7 +65,7 @@ class TestConstruction:
         bundle = tmp_path / "b.yaml"
         bundle.write_text("policies: []\n")
         with pytest.raises(ValueError):
-            PraetorClient(policies=[], bundle_path=bundle)
+            EphorateClient(policies=[], bundle_path=bundle)
 
     def test_loads_from_bundle_path(self, tmp_path: Path) -> None:
         bundle = tmp_path / "b.yaml"
@@ -76,7 +76,7 @@ class TestConstruction:
             "    when: {op: always}\n"
             "    reason: r\n"
         )
-        c = PraetorClient(bundle_path=bundle, default_agent_id="agent-1")
+        c = EphorateClient(bundle_path=bundle, default_agent_id="agent-1")
         assert len(c.policies) == 1
         assert c.policies[0].id == "a"
 
@@ -84,7 +84,7 @@ class TestConstruction:
 class TestEvaluate:
     def test_allow_path(self) -> None:
         sink = _RecordingSink()
-        c = PraetorClient(
+        c = EphorateClient(
             policies=[_allow_policy()],
             audit_sink=sink,
             default_agent_id="agent-1",
@@ -97,7 +97,7 @@ class TestEvaluate:
 
     def test_explicit_agent_id_overrides_default(self) -> None:
         sink = _RecordingSink()
-        c = PraetorClient(
+        c = EphorateClient(
             policies=[_allow_policy()],
             audit_sink=sink,
             default_agent_id="default-agent",
@@ -111,19 +111,19 @@ class TestEvaluate:
         assert sink.events[0].agent_id == "explicit-agent"
 
     def test_missing_agent_raises(self) -> None:
-        c = PraetorClient(policies=[_allow_policy()])
+        c = EphorateClient(policies=[_allow_policy()])
         with pytest.raises(ValueError, match="agent_id"):
             c.evaluate("http.get", {}, session_id="s1")
 
     def test_deny_returns_deny_without_raising(self) -> None:
-        c = PraetorClient(
+        c = EphorateClient(
             policies=[_deny_policy()], default_agent_id="a"
         )
         result = c.evaluate("http.get", {}, session_id="s1")
         assert result.decision is Decision.DENY
 
     def test_default_deny_when_no_match(self) -> None:
-        c = PraetorClient(policies=[_allow_policy()], default_agent_id="a")
+        c = EphorateClient(policies=[_allow_policy()], default_agent_id="a")
         result = c.evaluate("fs.read", {}, session_id="s1")
         assert result.decision is Decision.DENY
         assert result.matched_policy_id is None
@@ -139,7 +139,7 @@ class TestApprovalFlow:
             return False
 
     def test_no_handler_resolves_to_deny(self) -> None:
-        c = PraetorClient(
+        c = EphorateClient(
             policies=[_approval_policy()], default_agent_id="a"
         )
         result = c.evaluate("any", {}, session_id="s1")
@@ -147,7 +147,7 @@ class TestApprovalFlow:
         assert "no approval handler" in result.reason
 
     def test_handler_approves(self) -> None:
-        c = PraetorClient(
+        c = EphorateClient(
             policies=[_approval_policy()],
             default_agent_id="a",
             approval_handler=self._AlwaysApprove(),
@@ -157,7 +157,7 @@ class TestApprovalFlow:
         assert result.matched_policy_id == "needs-human"
 
     def test_handler_denies(self) -> None:
-        c = PraetorClient(
+        c = EphorateClient(
             policies=[_approval_policy()],
             default_agent_id="a",
             approval_handler=self._AlwaysDeny(),
@@ -168,14 +168,14 @@ class TestApprovalFlow:
 
 class TestEnforce:
     def test_allow_returns_arguments(self) -> None:
-        c = PraetorClient(policies=[_allow_policy()], default_agent_id="a")
+        c = EphorateClient(policies=[_allow_policy()], default_agent_id="a")
         args = c.enforce(
             "http.get", {"url": "https://x.com"}, session_id="s1"
         )
         assert args == {"url": "https://x.com"}
 
     def test_transform_merges_replacement(self) -> None:
-        c = PraetorClient(policies=[_transform_policy()], default_agent_id="a")
+        c = EphorateClient(policies=[_transform_policy()], default_agent_id="a")
         args = c.enforce(
             "http.get",
             {"url": "https://x.com", "extra": "kept"},
@@ -184,7 +184,7 @@ class TestEnforce:
         assert args == {"url": "<redacted>", "extra": "kept"}
 
     def test_deny_raises_policy_denied(self) -> None:
-        c = PraetorClient(policies=[_deny_policy()], default_agent_id="a")
+        c = EphorateClient(policies=[_deny_policy()], default_agent_id="a")
         with pytest.raises(PolicyDenied) as exc_info:
             c.enforce("http.get", {}, session_id="s1")
         assert exc_info.value.decision.decision is Decision.DENY

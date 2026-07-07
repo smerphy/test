@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from praetor_engine.types import (
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     DecisionResult,
@@ -15,7 +15,7 @@ from praetor_engine.types import (
     ToolCall,
 )
 
-from praetor.audit import (
+from ephorate.audit import (
     GENESIS_HASH,
     AuditEvent,
     JsonlAuditSink,
@@ -24,7 +24,7 @@ from praetor.audit import (
     _build_event,
     verify_chain,
 )
-from praetor.errors import AuditError
+from ephorate.errors import AuditError
 
 
 def _pi(tool_name: str = "http.get") -> PolicyInput:

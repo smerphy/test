@@ -4,7 +4,7 @@ A standard OTel Collector exports batched agent LLM telemetry here; we translate
 it to MetricEvents and feed the same ingest path as the native SDK (through the
 event log when log-centric ingest is on, else inline). This lets teams stand up
 an OTel Collector in front of their fleet for batching/backpressure/fan-out and
-point its OTLP exporter at Praetor.
+point its OTLP exporter at Ephorate.
 """
 
 from __future__ import annotations

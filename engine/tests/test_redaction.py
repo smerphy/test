@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from praetor_engine.redaction import redact_text, redact_value
+from ephorate_engine.redaction import redact_text, redact_value
 
 
 def test_redacts_common_pii() -> None:

@@ -1,11 +1,11 @@
-# Example OpenTelemetry Collector config for the Praetor collector tier.
+# Example OpenTelemetry Collector config for the Ephorate collector tier.
 #
 # Agents (or an OTLP instrumentation lib) send LLM-call telemetry to a nearby
 # collector over localhost; the collector batches + retries + fans out and
-# exports OTLP/HTTP to Praetor's /otlp/v1/metrics endpoint. This offloads
+# exports OTLP/HTTP to Ephorate's /otlp/v1/metrics endpoint. This offloads
 # buffering/backpressure from every agent and gives one choke point per node.
 #
-# Praetor consumes metrics named `praetor.llm.call` (or
+# Ephorate consumes metrics named `ephorate.llm.call` (or
 # `gen_ai.client.operation.duration`) whose data points carry GenAI
 # semantic-convention attributes; see app/services/otlp.py for the mapping.
 
@@ -28,14 +28,14 @@ processors:
     limit_mib: 256
 
 exporters:
-  otlphttp/praetor:
-    # Praetor exposes OTLP/HTTP for metrics at this path.
-    metrics_endpoint: https://praetor.example.com/otlp/v1/metrics
+  otlphttp/ephorate:
+    # Ephorate exposes OTLP/HTTP for metrics at this path.
+    metrics_endpoint: https://ephorate.example.com/otlp/v1/metrics
     headers:
       # Scope the export to one org + authenticate like any SDK client.
-      X-API-Key: ${env:PRAETOR_API_KEY}
-      X-Org-Slug: ${env:PRAETOR_ORG_SLUG}
-    # The collector already buffers + retries; Praetor is idempotent per call.
+      X-API-Key: ${env:EPHORATE_API_KEY}
+      X-Org-Slug: ${env:EPHORATE_ORG_SLUG}
+    # The collector already buffers + retries; Ephorate is idempotent per call.
     retry_on_failure:
       enabled: true
     sending_queue:
@@ -46,4 +46,4 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/praetor]
+      exporters: [otlphttp/ephorate]

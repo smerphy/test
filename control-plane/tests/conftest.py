@@ -4,10 +4,10 @@ import os
 from collections.abc import Iterator
 
 # Ensure we use a fresh in-memory SQLite per test session.
-os.environ.setdefault("PRAETOR_DATABASE_URL", "sqlite+pysqlite:///:memory:")
+os.environ.setdefault("EPHORATE_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 # The test suite runs without configured API keys / a production session
 # secret, which is only permitted in explicit dev mode.
-os.environ.setdefault("PRAETOR_DEV_MODE", "true")
+os.environ.setdefault("EPHORATE_DEV_MODE", "true")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -14,8 +14,8 @@ import string
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from praetor_engine.evaluator import Evaluator, Policy
-from praetor_engine.predicates import (
+from ephorate_engine.evaluator import Evaluator, Policy
+from ephorate_engine.predicates import (
     AlwaysPredicate,
     AndPredicate,
     EqPredicate,
@@ -25,7 +25,7 @@ from praetor_engine.predicates import (
     OrPredicate,
     parse_predicate,
 )
-from praetor_engine.types import (
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     PolicyInput,

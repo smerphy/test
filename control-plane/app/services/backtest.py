@@ -16,9 +16,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from praetor_engine.evaluator import Evaluator
-from praetor_engine.parser import parse_bundle
-from praetor_engine.types import AgentInfo, PolicyInput, SessionInfo, ToolCall
+from ephorate_engine.evaluator import Evaluator
+from ephorate_engine.parser import parse_bundle
+from ephorate_engine.types import AgentInfo, PolicyInput, SessionInfo, ToolCall
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

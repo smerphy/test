@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import httpx
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import AlwaysPredicate
-from praetor_engine.types import Decision
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import AlwaysPredicate
+from ephorate_engine.types import Decision
 
-from praetor.client import PraetorClient
-from praetor.quarantine import QuarantineGuard
+from ephorate.client import EphorateClient
+from ephorate.quarantine import QuarantineGuard
 
 
 def _guard(active: list[dict], *, fail_closed: bool = False) -> QuarantineGuard:
@@ -60,7 +60,7 @@ def test_client_denies_quarantined_agent_before_policy() -> None:
     allow_all = Policy(
         id="allow-all", effect=Decision.ALLOW, when=AlwaysPredicate(), reason="ok"
     )
-    client = PraetorClient(policies=[allow_all], default_agent_id="rogue")
+    client = EphorateClient(policies=[allow_all], default_agent_id="rogue")
     # Inject a guard directly (no control plane wiring needed for the test).
     client._quarantine = _guard(
         [{"agent_id": "rogue", "session_id": None, "reason": "isolated"}]
@@ -75,7 +75,7 @@ def test_client_allows_non_quarantined_agent() -> None:
     allow_all = Policy(
         id="allow-all", effect=Decision.ALLOW, when=AlwaysPredicate(), reason="ok"
     )
-    client = PraetorClient(policies=[allow_all], default_agent_id="clean")
+    client = EphorateClient(policies=[allow_all], default_agent_id="clean")
     client._quarantine = _guard(
         [{"agent_id": "rogue", "session_id": None, "reason": "isolated"}]
     )

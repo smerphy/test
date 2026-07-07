@@ -22,7 +22,7 @@ function allow(): DecisionResult {
 describe("JsonlAuditSink", () => {
   let dir: string;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "praetor-audit-"));
+    dir = mkdtempSync(join(tmpdir(), "ephorate-audit-"));
   });
   afterEach(() => {
     // tmp dirs are cleaned by the OS; nothing to do.

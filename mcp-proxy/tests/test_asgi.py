@@ -9,8 +9,8 @@ import pytest
 
 pytest.importorskip("mcp")
 
-from praetor_mcp.config import parse_config
-from praetor_mcp.server import build_asgi_app
+from ephorate_mcp.config import parse_config
+from ephorate_mcp.server import build_asgi_app
 
 
 def _config(tmp_path: Path, path: str = "/mcp") -> Any:

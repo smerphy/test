@@ -57,7 +57,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold">Praetor · Claude monitoring</h1>
+        <h1 className="text-2xl font-semibold">Ephorate · Claude monitoring</h1>
         <p className="mt-1 text-sm text-foreground/60">
           Token usage, cost, latency, error rate, and alert firings — last 24h.
         </p>

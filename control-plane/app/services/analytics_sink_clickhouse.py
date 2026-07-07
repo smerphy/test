@@ -2,11 +2,11 @@
 
 The columnar store for full-history aggregation (spend/usage/decision-rate
 rollups over billions of rows) that Postgres shouldn't carry. Selected with
-``PRAETOR_ANALYTICS_SINK=clickhouse`` + ``PRAETOR_CLICKHOUSE_DSN``.
+``EPHORATE_ANALYTICS_SINK=clickhouse`` + ``EPHORATE_CLICKHOUSE_DSN``.
 
 ``clickhouse-connect`` is an optional dependency, imported lazily so the
 control plane runs (and CI passes) without it. Records are inserted as raw JSON
-into per-topic tables (e.g. ``praetor_analytics_audit``) with a small set of
+into per-topic tables (e.g. ``ephorate_analytics_audit``) with a small set of
 materialized columns for fast grouping; the table DDL is managed out of band by
 the deployment. Not exercised in CI (no ClickHouse server).
 """
@@ -27,7 +27,7 @@ class ClickHouseAnalyticsSink:
         dsn = get_settings().clickhouse_dsn
         if not dsn:
             raise RuntimeError(
-                "analytics_sink=clickhouse requires PRAETOR_CLICKHOUSE_DSN"
+                "analytics_sink=clickhouse requires EPHORATE_CLICKHOUSE_DSN"
             )
         self._dsn = dsn
         self._client: Any = None
@@ -47,7 +47,7 @@ class ClickHouseAnalyticsSink:
         if not records:
             return 0
         client = self._get_client()
-        table = f"praetor_analytics_{topic}"
+        table = f"ephorate_analytics_{topic}"
         rows = [(org_id, json.dumps(rec)) for rec in records]
         client.insert(table, rows, column_names=["organization_id", "payload"])
         return len(records)

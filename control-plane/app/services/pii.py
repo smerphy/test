@@ -18,7 +18,7 @@ from typing import Any
 
 # Redaction detectors live in the shared engine so the SDK (pre-hash audit
 # redaction) and the control plane (finding-ingest redaction) never drift.
-from praetor_engine.redaction import redact_text, redact_value
+from ephorate_engine.redaction import redact_text, redact_value
 
 # Data-classification labels used by classification-aware retention.
 CLASS_STANDARD = "standard"

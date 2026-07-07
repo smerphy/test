@@ -7,8 +7,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cryptography.fernet import Fernet
+from ephorate_engine.audit_hash import compute_hash as _canonical_hash
 from fastapi.testclient import TestClient
-from praetor_engine.audit_hash import compute_hash as _canonical_hash
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 

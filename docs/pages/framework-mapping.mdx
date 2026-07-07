@@ -1,13 +1,13 @@
 # Framework mapping reference
 
-Praetor ships starter bundles for three major AI governance frameworks.
+Ephorate ships starter bundles for three major AI governance frameworks.
 Each policy in a bundle is tagged via `metadata` with the control(s) it
 satisfies, so compliance reports map policy decisions back to framework
 controls automatically.
 
 ## NIST AI Risk Management Framework (AI RMF 1.0)
 
-File: `engine/praetor_engine/bundles/nist_ai_rmf.praetor`
+File: `engine/ephorate_engine/bundles/nist_ai_rmf.ephorate`
 
 | Policy | Control |
 | --- | --- |
@@ -18,7 +18,7 @@ File: `engine/praetor_engine/bundles/nist_ai_rmf.praetor`
 
 ## ISO/IEC 42001:2023
 
-File: `engine/praetor_engine/bundles/iso_42001.praetor`
+File: `engine/ephorate_engine/bundles/iso_42001.ephorate`
 
 | Policy | Annex A control |
 | --- | --- |
@@ -28,7 +28,7 @@ File: `engine/praetor_engine/bundles/iso_42001.praetor`
 
 ## EU AI Act
 
-File: `engine/praetor_engine/bundles/eu_ai_act.praetor`
+File: `engine/ephorate_engine/bundles/eu_ai_act.ephorate`
 
 | Policy | Article |
 | --- | --- |
@@ -39,7 +39,7 @@ File: `engine/praetor_engine/bundles/eu_ai_act.praetor`
 
 ## Agent abuse patterns (hardening bundle)
 
-File: `engine/praetor_engine/bundles/agent_abuse_patterns.praetor`
+File: `engine/ephorate_engine/bundles/agent_abuse_patterns.ephorate`
 
 A framework-independent hardening bundle. Each rule is cross-tagged
 to the framework controls it satisfies, so compliance reports surface
@@ -58,19 +58,19 @@ it regardless of which framework you're evaluating against.
 | Container / K8s | `kubectl delete/exec/drain`, `helm uninstall`; `docker run --privileged` / `--pid=host` / `-v /:/host` |
 | Privilege escalation | `chmod +s`, `usermod -aG sudo`, sudoers edits, `gpasswd -a`, sudo tool names |
 | Crypto wallets | BTC (legacy + bech32) and ETH addresses → require approval |
-| Audit tampering | CloudTrail / S3-logging tampering, log-group deletion, Praetor self-tampering |
+| Audit tampering | CloudTrail / S3-logging tampering, log-group deletion, Ephorate self-tampering |
 
 Load it alongside a framework bundle:
 
 ```python
-from praetor_engine.bundles import load_bundle
+from ephorate_engine.bundles import load_bundle
 
 policies = load_bundle("nist_ai_rmf") + load_bundle("agent_abuse_patterns")
 ```
 
 ## Prompt injection & jailbreak detection
 
-File: `engine/praetor_engine/bundles/prompt_injection.praetor`
+File: `engine/ephorate_engine/bundles/prompt_injection.ephorate`
 
 Scans the common text-bearing tool-argument fields (`prompt`, `message`,
 `content`, `text`, `input`, `body`, `query`) for prompt-injection and

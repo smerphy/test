@@ -49,7 +49,7 @@ def run_retention(
     _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> dict[str, Any]:
     """Trigger a retention pass for this org now (roll up + prune aged raw
-    audit events). No-op unless `PRAETOR_AUDIT_RETENTION_DAYS` is set."""
+    audit events). No-op unless `EPHORATE_AUDIT_RETENTION_DAYS` is set."""
     result = apply_retention(
         session,
         org_id=org.id,
@@ -86,7 +86,7 @@ def run_archive(
     _p: Principal = Depends(require_role(Role.ADMIN)),
 ) -> dict[str, Any]:
     """Write not-yet-archived audit events to the authoritative cold tier now.
-    No-op unless `PRAETOR_EVENT_ARCHIVE_DIR` is configured."""
+    No-op unless `EPHORATE_EVENT_ARCHIVE_DIR` is configured."""
     result = archive_pending(
         session, org.id, batch_size=settings.audit_maintenance_batch_size
     )

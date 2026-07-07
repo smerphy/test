@@ -72,14 +72,14 @@ backend is swapped.
 
 | Setting | Default | Effect |
 |---------|---------|--------|
-| `PRAETOR_INGEST_VIA_LOG` | `false` | Ingest appends to the log; consumers materialize |
-| `PRAETOR_LOG_BACKEND` | `sql` | `sql` or `kafka` |
-| `PRAETOR_KAFKA_BOOTSTRAP_SERVERS` | — | Kafka/Redpanda brokers |
-| `PRAETOR_ANALYTICS_SINK` | `none` | `none` / `ndjson` / `clickhouse` |
-| `PRAETOR_CLICKHOUSE_DSN` | — | ClickHouse connection |
-| `PRAETOR_CONSUMER_BATCH_SIZE` | `1000` | Records drained per topic/run |
+| `EPHORATE_INGEST_VIA_LOG` | `false` | Ingest appends to the log; consumers materialize |
+| `EPHORATE_LOG_BACKEND` | `sql` | `sql` or `kafka` |
+| `EPHORATE_KAFKA_BOOTSTRAP_SERVERS` | — | Kafka/Redpanda brokers |
+| `EPHORATE_ANALYTICS_SINK` | `none` | `none` / `ndjson` / `clickhouse` |
+| `EPHORATE_CLICKHOUSE_DSN` | — | ClickHouse connection |
+| `EPHORATE_CONSUMER_BATCH_SIZE` | `1000` | Records drained per topic/run |
 
-The `praetor.log.consume` Celery beat task drains the log; with
+The `ephorate.log.consume` Celery beat task drains the log; with
 `ingest_via_log=false` nothing is published and it is a no-op.
 
 ## Consequences
