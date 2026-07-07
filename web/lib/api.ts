@@ -285,6 +285,21 @@ export const api = {
     description?: string;
   }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
 
+  // --- Kill-switch (EDR emergency stop) -------------------------------------
+  getKillSwitch: () => call<KillSwitchStatus>("/killswitch"),
+  engageKillSwitch: () =>
+    call<KillSwitchStatus>("/killswitch/engage", { method: "POST" }),
+  releaseKillSwitch: () =>
+    call<KillSwitchStatus>("/killswitch/release", { method: "POST" }),
+  grantBreakGlass: (body: {
+    agent_id: string;
+    reason: string;
+    minutes?: number;
+  }) => call<KillSwitchStatus>("/killswitch/break-glass", {
+    method: "POST",
+    body,
+  }),
+
   // --- Compliance posture ---------------------------------------------------
   getPostureOverview: () => call<PostureOverview>("/compliance/posture"),
   getPosture: (framework: string) =>
@@ -308,6 +323,21 @@ export const api = {
   listPlaybookExecutions: (limit = 50) =>
     call<PlaybookExecution[]>(`/soar/executions?limit=${limit}`),
 };
+
+// --- Kill-switch ------------------------------------------------------------
+export interface BreakGlassGrant {
+  id: string;
+  agent_id: string;
+  reason: string;
+  granted_by: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface KillSwitchStatus {
+  halt_all: boolean;
+  active_break_glass: BreakGlassGrant[];
+}
 
 // --- Compliance posture -----------------------------------------------------
 export interface PostureFrameworkSummary {
