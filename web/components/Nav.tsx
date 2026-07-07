@@ -2,6 +2,7 @@ import Link from "next/link";
 import { api, type Role } from "@/lib/api";
 import { roleAtLeast } from "@/lib/rbac";
 import { NavLinks } from "@/components/NavLinks";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type Href =
   | "/"
@@ -86,14 +87,17 @@ export async function Nav() {
           <NavLinks links={links} />
         </nav>
 
-        {role && (
-          <span
-            className={`hidden shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset sm:inline-flex ${ROLE_STYLE[role]}`}
-            title="Your effective role in this workspace"
-          >
-            {role}
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {role && (
+            <span
+              className={`hidden items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset sm:inline-flex ${ROLE_STYLE[role]}`}
+              title="Your effective role in this workspace"
+            >
+              {role}
+            </span>
+          )}
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

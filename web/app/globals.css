@@ -8,18 +8,37 @@
    * Values are space-separated RGB channels so Tailwind's `/opacity`
    * utilities keep working (see tailwind.config.ts).
    */
-  :root {
+  /* Dark is the default theme (applies with no data-theme attribute and when
+   * data-theme="dark"). Light values live in the [data-theme="light"] block. */
+  :root,
+  :root[data-theme="dark"] {
     --background: 9 11 14; /* app canvas */
     --surface: 20 23 29; /* cards / raised panels */
     --foreground: 236 239 244; /* primary text */
     --muted: 32 36 44; /* chips, bars, subtle fills */
     --border: 42 47 56; /* hairlines */
     --accent: 59 130 246; /* interactive / links */
+    --accent-foreground: 255 255 255; /* text on solid accent */
     --danger: 248 113 113;
     --warning: 245 158 11;
     --success: 52 211 153;
     --ring: 96 165 250; /* focus ring */
     color-scheme: dark;
+  }
+
+  :root[data-theme="light"] {
+    --background: 248 249 251;
+    --surface: 255 255 255;
+    --foreground: 17 24 39;
+    --muted: 236 239 244;
+    --border: 224 228 235;
+    --accent: 37 99 235;
+    --accent-foreground: 255 255 255;
+    --danger: 220 38 38;
+    --warning: 180 83 9;
+    --success: 4 120 87;
+    --ring: 37 99 235;
+    color-scheme: light;
   }
 
   html {
@@ -74,6 +93,12 @@
     cursor: pointer;
   }
 
+  /* Solid-accent surfaces (primary buttons) keep readable text in both themes.
+   * Lives in @layer base so an explicit `text-*` utility still overrides it. */
+  .bg-accent {
+    color: rgb(var(--accent-foreground));
+  }
+
   input,
   select,
   textarea,
@@ -115,6 +140,35 @@
   ::-webkit-scrollbar-thumb:hover {
     background: rgb(var(--foreground) / 0.28);
   }
+}
+
+/*
+ * Status colors across pages use raw Tailwind palette (bg tints + solid bars
+ * read fine on light, but the `-400` text is too light on a light surface).
+ * Remap just those text utilities in light mode — centralized so no page needs
+ * to change. Higher specificity ([data-theme] + class) wins over the base
+ * utility, and only in the light theme.
+ */
+:root[data-theme="light"] .text-red-400 {
+  color: rgb(185 28 28); /* red-700 */
+}
+:root[data-theme="light"] .text-rose-400 {
+  color: rgb(190 18 60); /* rose-700 */
+}
+:root[data-theme="light"] .text-emerald-400 {
+  color: rgb(4 120 87); /* emerald-700 */
+}
+:root[data-theme="light"] .text-amber-400 {
+  color: rgb(180 83 9); /* amber-700 */
+}
+:root[data-theme="light"] .text-orange-400 {
+  color: rgb(194 65 12); /* orange-700 */
+}
+:root[data-theme="light"] .text-sky-400 {
+  color: rgb(3 105 161); /* sky-700 */
+}
+:root[data-theme="light"] .text-slate-400 {
+  color: rgb(71 85 105); /* slate-600 */
 }
 
 @media (prefers-reduced-motion: reduce) {
