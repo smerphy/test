@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { api, type PolicyBundle, type Project } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -21,19 +22,15 @@ export default async function PoliciesPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold">Policies</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Policy bundles grouped by project. New versions are immutable; roll
-          back by activating a prior version.
-        </p>
-      </header>
+      <PageHeader
+        title="Policies"
+        description={
+          <>Policy bundles grouped by project. New versions are immutable; roll
+          back by activating a prior version.</>
+        }
+      />
 
-      {error && (
-        <Card title="Control plane unreachable">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} title="Control plane unreachable" />}
 
       {projects.length === 0 && !error && (
         <Card>

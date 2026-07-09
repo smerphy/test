@@ -1,4 +1,5 @@
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { api, type AuditEvent } from "@/lib/api";
 
@@ -27,13 +28,13 @@ export default async function AuditPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Audit</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Every policy decision, in order. Filters compose; the URL is the
-          permalink.
-        </p>
-      </header>
+      <PageHeader
+        title="Audit"
+        description={
+          <>Every policy decision, in order. Filters compose; the URL is the
+          permalink.</>
+        }
+      />
 
       <Card title="Filters">
         <form
@@ -61,11 +62,7 @@ export default async function AuditPage({
         </form>
       </Card>
 
-      {error && (
-        <Card title="Error">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       <Card title={`Events (${events.length})`}>
         {events.length === 0 ? (

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
+import { PageHeader } from "@/components/Page";
 import { api, type Member, type Role, type WhoAmI } from "@/lib/api";
 import { ROLE_DESCRIPTION, ROLE_ORDER, roleAtLeast } from "@/lib/rbac";
 
@@ -58,15 +59,15 @@ export default async function MembersPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Members</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Workspace members and their access roles.{" "}
+      <PageHeader
+        title="Members"
+        description={
+          <>Workspace members and their access roles.{" "}
           {canManage
             ? "As an owner you can change roles."
-            : "Only owners can change roles."}
-        </p>
-      </header>
+            : "Only owners can change roles."}</>
+        }
+      />
 
       {actionError && (
         <Card title="Could not update role">

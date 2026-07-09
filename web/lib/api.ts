@@ -122,6 +122,19 @@ async function call<T>(
   return (await res.json()) as T;
 }
 
+/** Append defined, non-empty params to a path as a query string. */
+function withQuery(
+  path: string,
+  params: Record<string, string | undefined>
+): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") qs.set(k, v);
+  }
+  const s = qs.toString();
+  return s ? `${path}?${s}` : path;
+}
+
 export const api = {
   listProjects: () => call<Project[]>("/projects"),
   listBundles: (projectId: string) =>
@@ -141,16 +154,8 @@ export const api = {
     until?: string;
     limit?: number;
   }) => call<BacktestReport>("/policies/backtest", { method: "POST", body }),
-  searchAudit: (params: Record<string, string | undefined>) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/audit/events?${qs.toString()}`
-      : "/audit/events";
-    return call<AuditEvent[]>(path);
-  },
+  searchAudit: (params: Record<string, string | undefined>) =>
+    call<AuditEvent[]>(withQuery("/audit/events", params)),
   listApprovals: (status: ApprovalRequest["status"] = "pending") =>
     call<ApprovalRequest[]>(`/approvals?status=${status}`),
   resolveApproval: (id: string, approved: boolean, resolved_by?: string) =>
@@ -166,16 +171,8 @@ export const api = {
   }) =>
     call<ComplianceReport>("/reports/compliance", { method: "POST", body }),
 
-  aggregateMetrics: (params: Record<string, string | undefined>) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/metrics/aggregate?${qs.toString()}`
-      : "/metrics/aggregate";
-    return call<MetricAggregateResponse>(path);
-  },
+  aggregateMetrics: (params: Record<string, string | undefined>) =>
+    call<MetricAggregateResponse>(withQuery("/metrics/aggregate", params)),
   listAlertRules: () => call<AlertRule[]>("/alerts/rules"),
   createAlertRule: (body: Partial<AlertRule>) =>
     call<AlertRule>("/alerts/rules", { method: "POST", body }),
@@ -191,14 +188,8 @@ export const api = {
 
   // SIEM / EDR
   getOverview: () => call<SecurityOverview>("/overview"),
-  listFindings: (params: Record<string, string | undefined> = {}) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString() ? `/findings?${qs.toString()}` : "/findings";
-    return call<Finding[]>(path);
-  },
+  listFindings: (params: Record<string, string | undefined> = {}) =>
+    call<Finding[]>(withQuery("/findings", params)),
   updateFinding: (id: string, body: Partial<{ status: string; assignee: string; note: string; resolved_by: string }>) =>
     call<Finding>(`/findings/${id}`, { method: "PATCH", body }),
   sweepFindings: () =>
@@ -239,16 +230,8 @@ export const api = {
   getTelemetryStats: () => call<TelemetryStats>("/telemetry/stats"),
 
   // FinOps / financial tracking
-  getCostSummary: (params: Record<string, string | undefined> = {}) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/finance/summary?${qs.toString()}`
-      : "/finance/summary";
-    return call<CostSummary>(path);
-  },
+  getCostSummary: (params: Record<string, string | undefined> = {}) =>
+    call<CostSummary>(withQuery("/finance/summary", params)),
   getBudgetStatus: () => call<BudgetStatus>("/finance/budget"),
   setCostBudget: (monthly_cost_budget_usd: number | null) =>
     call<{ monthly_cost_budget_usd: number | null }>("/org", {
@@ -267,16 +250,8 @@ export const api = {
   }) => call<ThreatFeed>("/threat/feeds", { method: "POST", body }),
   syncFeed: (id: string) =>
     call<FeedSyncResult>(`/threat/feeds/${id}/sync`, { method: "POST" }),
-  listIndicators: (params: Record<string, string | undefined> = {}) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/threat/indicators?${qs.toString()}`
-      : "/threat/indicators";
-    return call<ThreatIndicator[]>(path);
-  },
+  listIndicators: (params: Record<string, string | undefined> = {}) =>
+    call<ThreatIndicator[]>(withQuery("/threat/indicators", params)),
   createIndicator: (body: {
     type: string;
     value: string;

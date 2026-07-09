@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { Card, Stat } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import {
   api,
   type KillSwitchStatus,
@@ -87,18 +88,14 @@ export default async function SecurityPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Security overview</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Detection &amp; response posture at a glance.
-        </p>
-      </header>
+      <PageHeader
+        title="Security overview"
+        description={
+          <>Detection &amp; response posture at a glance.</>
+        }
+      />
 
-      {error && (
-        <Card title="Error">
-          <p className="text-sm text-red-400">{error}</p>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       {killswitch && (
         <Card title="Kill-switch (EDR emergency stop)">

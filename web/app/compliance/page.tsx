@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import {
   api,
   type ComplianceReport,
@@ -79,19 +80,15 @@ export default async function CompliancePage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Compliance</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Live control posture against AI-governance frameworks, plus
-          point-in-time evidence reports over a selected period.
-        </p>
-      </header>
+      <PageHeader
+        title="Compliance"
+        description={
+          <>Live control posture against AI-governance frameworks, plus
+          point-in-time evidence reports over a selected period.</>
+        }
+      />
 
-      {error && (
-        <Card title="Error">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       {overview && (
         <Card title="Live posture">

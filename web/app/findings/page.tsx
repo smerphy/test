@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { SeverityBadge, StatusBadge } from "@/components/SeverityBadge";
 import { api, type Finding, type WhoAmI } from "@/lib/api";
 import { roleAtLeast } from "@/lib/rbac";
@@ -77,14 +78,14 @@ export default async function FindingsPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Findings</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Every security signal across the org — from the detection engine,
+      <PageHeader
+        title="Findings"
+        description={
+          <>Every security signal across the org — from the detection engine,
           agents reporting what they find, and proactive AI sweeps — scored by
-          severity, impact, and fidelity, ranked by risk.
-        </p>
-      </header>
+          severity, impact, and fidelity, ranked by risk.</>
+        }
+      />
 
       {params.error && (
         <Card title="Action failed">
@@ -129,11 +130,7 @@ export default async function FindingsPage({
         </div>
       </Card>
 
-      {error && (
-        <Card title="Error">
-          <p className="text-sm text-red-400">{error}</p>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       <Card title={`${findings.length} findings`}>
         {findings.length === 0 ? (

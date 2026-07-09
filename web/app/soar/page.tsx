@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import {
   api,
   type Playbook,
@@ -85,19 +86,15 @@ export default async function SoarPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Response playbooks</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Automated SOAR response: when a new finding matches a playbook&apos;s
-          conditions, its actions run in priority order. Every run is recorded.
-        </p>
-      </header>
+      <PageHeader
+        title="Response playbooks"
+        description={
+          <>Automated SOAR response: when a new finding matches a playbook&apos;s
+          conditions, its actions run in priority order. Every run is recorded.</>
+        }
+      />
 
-      {error && (
-        <Card title="Error">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       <Card title="Playbooks">
         {playbooks.length === 0 ? (

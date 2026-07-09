@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import clsx from "clsx";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { api, type AlertEvent, type AlertRule } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -114,19 +115,15 @@ export default async function AlertsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Alerts</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Threshold rules over Claude metrics. Routed to Slack, PagerDuty, or
-          a webhook on fire.
-        </p>
-      </header>
+      <PageHeader
+        title="Alerts"
+        description={
+          <>Threshold rules over Claude metrics. Routed to Slack, PagerDuty, or
+          a webhook on fire.</>
+        }
+      />
 
-      {error && (
-        <Card title="Control plane unreachable">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} title="Control plane unreachable" />}
 
       <Card title="Create rule">
         <form action={createRuleAction} className="grid grid-cols-1 gap-3 md:grid-cols-3">

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { SeverityBadge } from "@/components/SeverityBadge";
 import {
   api,
@@ -111,26 +112,20 @@ export default async function ThreatPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Threat intelligence</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Ingest IOC feeds (STIX / MISP / CSV / JSON / lists). Indicators are
-          matched against agent activity and raise threat-intel findings.
-        </p>
-      </header>
+      <PageHeader
+        title="Threat intelligence"
+        description={
+          <>Ingest IOC feeds (STIX / MISP / CSV / JSON / lists). Indicators are
+          matched against agent activity and raise threat-intel findings.</>
+        }
+      />
 
       {params.error && (
         <Card title="Action failed">
           <p className="text-sm text-red-400">{params.error}</p>
         </Card>
       )}
-      {error && (
-        <Card title="Error">
-          <pre className="overflow-x-auto font-mono text-xs text-red-400">
-            {error}
-          </pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       <Card title={`${feeds.length} feeds`}>
         <div className="overflow-x-auto">

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card, Stat } from "@/components/Card";
+import { PageHeader } from "@/components/Page";
 import { api, type AlertEvent, type MetricAggregateResponse } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -56,14 +57,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Ephorate <span className="text-foreground/40">·</span> Claude monitoring
-        </h1>
-        <p className="mt-1.5 text-sm text-foreground/60">
-          Token usage, cost, latency, error rate, and alert firings — last 24h.
-        </p>
-      </header>
+      <PageHeader
+        title={<>Ephorate <span className="text-foreground/40">·</span> Claude monitoring</>}
+        description={
+          <>Token usage, cost, latency, error rate, and alert firings — last 24h.</>
+        }
+      />
 
       {error ? (
         <Card title="Control plane unreachable">
