@@ -119,15 +119,34 @@ def parse_config(data: dict[str, Any]) -> ProxyConfig:
     return config
 
 
+def _expand_env(value: Any) -> Any:
+    """Recursively expand ``${VAR}`` / ``$VAR`` in string keys and values.
+
+    Expansion runs *after* the YAML is parsed, so an env var whose value
+    contains YAML syntax (newlines, ``key: value``) can only ever become a
+    scalar string in an already-fixed structure — it can never inject new keys
+    or list items. Keys are expanded too, to support env-var auth tokens
+    (``auth_tokens: {${TOKEN}: agent}``). Undefined vars are left intact.
+    """
+    if isinstance(value, str):
+        return os.path.expandvars(value)
+    if isinstance(value, dict):
+        return {_expand_env(k): _expand_env(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env(v) for v in value]
+    return value
+
+
 def load_config(path: Path | str) -> ProxyConfig:
     with open(path, encoding="utf-8") as fh:
         text = fh.read()
-    # Expand ${VAR} / $VAR from the environment so secrets (API keys, upstream
-    # tokens) live in the process env, not in the YAML on disk. Undefined vars
-    # are left intact.
-    data = yaml.safe_load(os.path.expandvars(text)) or {}
+    data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
         raise ValueError("config root must be a mapping")
+    # Expand ${VAR} / $VAR from the environment so secrets (API keys, upstream
+    # tokens) live in the process env, not in the YAML on disk — but only within
+    # string values, after structure is fixed, so env content can't inject YAML.
+    data = _expand_env(data)
     return parse_config(data)
 
 

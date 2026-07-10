@@ -58,6 +58,9 @@ class ProxyServer:
         self._upstream_cfg = {u.name: u for u in config.upstreams}
         self._metrics = ProxyMetrics()
         self._stack = AsyncExitStack()
+        # One exit stack per upstream so a reconnect can close the prior
+        # session/subprocess instead of leaking it into a process-lifetime stack.
+        self._upstream_stacks: dict[str, AsyncExitStack] = {}
 
     @property
     def metrics(self) -> ProxyMetrics:
@@ -123,11 +126,14 @@ class ProxyServer:
         try:
             result = await self._call_upstream(session, up_tool, gated.arguments)
         except Exception:
-            # The upstream session may have dropped; reconnect once and retry so
-            # a transient upstream restart doesn't fail the agent's call.
+            # Do NOT re-execute the call: it may have already run upstream
+            # before the connection dropped, and re-invoking a non-idempotent
+            # tool (a charge, a write) would double-execute. Repair the session
+            # for subsequent calls, then surface the failure to the caller.
             self._metrics.record_upstream_error()
-            session = await self._reconnect(up_name)
-            result = await self._call_upstream(session, up_tool, gated.arguments)
+            with contextlib.suppress(Exception):
+                await self._reconnect(up_name)
+            raise
         content = list(result.content)
         if self._config.enforcement.redact_tool_output:
             content = self._redact_output(content)
@@ -164,20 +170,28 @@ class ProxyServer:
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
 
+        # Close any prior connection for this upstream first, so a reconnect
+        # doesn't leak the old subprocess/session for the process lifetime.
+        old = self._upstream_stacks.pop(up.name, None)
+        if old is not None:
+            with contextlib.suppress(Exception):
+                await old.aclose()
+        stack = AsyncExitStack()
         if up.transport == "stdio":
             params = StdioServerParameters(
                 command=up.command[0], args=up.command[1:], env=up.env or None
             )
-            read, write = await self._stack.enter_async_context(stdio_client(params))
+            read, write = await stack.enter_async_context(stdio_client(params))
         else:
             from mcp.client.streamable_http import streamablehttp_client
 
             assert up.url is not None
-            read, write, _ = await self._stack.enter_async_context(
+            read, write, _ = await stack.enter_async_context(
                 streamablehttp_client(up.url)
             )
-        session = await self._stack.enter_async_context(ClientSession(read, write))
+        session = await stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
+        self._upstream_stacks[up.name] = stack
         return session
 
     async def _load_routes(self) -> None:  # pragma: no cover
@@ -227,6 +241,10 @@ class ProxyServer:
     async def aclose(self) -> None:
         """Close upstream connections and flush/stop the audit shipper so a
         clean shutdown never drops locally-buffered events."""
+        for stack in list(self._upstream_stacks.values()):
+            with contextlib.suppress(Exception):
+                await stack.aclose()
+        self._upstream_stacks.clear()
         await self._stack.aclose()
         self._gate.close()
 

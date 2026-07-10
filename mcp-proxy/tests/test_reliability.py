@@ -61,11 +61,13 @@ async def test_call_records_decision_metric() -> None:
     assert proxy.metrics._calls["deny"] == 1
 
 
-# --- upstream reconnect + retry ---------------------------------------------
-async def test_upstream_reconnect_retry(monkeypatch) -> None:
+# --- upstream failure: reconnect for future calls, do NOT re-execute --------
+async def test_upstream_error_reconnects_without_reexec(monkeypatch) -> None:
     from ephorate_mcp.server import ProxyServer
 
     proxy = ProxyServer(_config(), gate=_gate(Decision.ALLOW))
+
+    healthy_calls = 0
 
     class _Failing:
         async def call_tool(self, tool: str, args: dict[str, Any]) -> Any:
@@ -73,20 +75,27 @@ async def test_upstream_reconnect_retry(monkeypatch) -> None:
 
     class _Healthy:
         async def call_tool(self, tool: str, args: dict[str, Any]) -> Any:
+            nonlocal healthy_calls
+            healthy_calls += 1
             return SimpleNamespace(content=["recovered"])
 
     proxy._routes["mock__echo"] = ("mock", "echo", _Failing())
-    healthy = _Healthy()
+    reconnected = False
 
     async def _fake_reconnect(name: str) -> Any:
-        proxy._routes["mock__echo"] = ("mock", "echo", healthy)
-        return healthy
+        nonlocal reconnected
+        reconnected = True
+        proxy._routes["mock__echo"] = ("mock", "echo", _Healthy())
+        return proxy._routes["mock__echo"][2]
 
     monkeypatch.setattr(proxy, "_reconnect", _fake_reconnect)
-    result = await proxy.handle_call_tool("mock__echo", {})
-    assert result == ["recovered"]
+    # A non-idempotent call that fails must surface the error, not silently
+    # re-run — even though a session is repaired for the next call.
+    with pytest.raises(RuntimeError, match="upstream dropped"):
+        await proxy.handle_call_tool("mock__echo", {})
+    assert reconnected is True  # session repaired for subsequent calls
+    assert healthy_calls == 0  # the failed call was NOT re-executed
     assert proxy.metrics.upstream_errors == 1
-    assert proxy.metrics._calls["allow"] == 1
 
 
 async def test_reconnect_failure_propagates(monkeypatch) -> None:

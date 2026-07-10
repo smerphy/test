@@ -18,16 +18,32 @@ def test_config_expands_env_vars(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MY_TOKEN", "s3cr3t")
     monkeypatch.setenv("MY_URL", "https://cp.example")
     cfg_path = tmp_path / "ephorate-mcp.yaml"
+    # Env refs are expanded after the YAML is parsed, so use block style (or
+    # quote them in flow style) — `${VAR}` is not a bare YAML flow scalar.
     cfg_path.write_text(
-        "control_plane: { url: ${MY_URL}, api_key: ${MY_TOKEN} }\n"
+        "control_plane:\n  url: ${MY_URL}\n  api_key: ${MY_TOKEN}\n"
         "upstreams:\n"
         "  - name: gh\n    transport: stdio\n    command: [srv]\n"
-        "    env: { TOKEN: ${MY_TOKEN} }\n"
+        "    env:\n      TOKEN: ${MY_TOKEN}\n"
     )
     cfg = load_config(cfg_path)
     assert cfg.api_key == "s3cr3t"
     assert cfg.control_plane_url == "https://cp.example"
     assert cfg.upstreams[0].env["TOKEN"] == "s3cr3t"
+
+
+def test_env_value_cannot_inject_yaml_structure(monkeypatch, tmp_path: Path) -> None:
+    # An env var whose value contains YAML syntax must become a scalar string,
+    # not extra config structure (expansion happens after parsing).
+    monkeypatch.setenv("EVIL", "real\nadmin_backdoor: true")
+    cfg_path = tmp_path / "evil.yaml"
+    cfg_path.write_text(
+        "agent:\n  id: ${EVIL}\n"
+        "upstreams:\n  - name: x\n    transport: stdio\n    command: [a]\n"
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.agent_id == "real\nadmin_backdoor: true"  # inert scalar
+    assert not hasattr(cfg, "admin_backdoor")
 
 
 def test_undefined_env_var_left_intact(tmp_path: Path) -> None:
