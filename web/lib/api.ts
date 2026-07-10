@@ -141,6 +141,10 @@ export const api = {
     call<PolicyBundle[]>(`/projects/${projectId}/bundles`),
   listVersions: (bundleId: string) =>
     call<PolicyVersionSummary[]>(`/bundles/${bundleId}/versions`),
+  // Full versions (with yaml_text) in one call — avoids an N+1 of getVersion
+  // per version when rendering the whole history.
+  listVersionsFull: (bundleId: string) =>
+    call<PolicyVersion[]>(`/bundles/${bundleId}/versions/full`),
   getVersion: (versionId: string) =>
     call<PolicyVersion>(`/versions/${versionId}`),
   createVersion: (bundleId: string, body: { yaml_text: string; notes?: string }) =>
@@ -507,7 +511,13 @@ export type IndicatorType =
   | "prompt_signature"
   | "regex";
 
-export type FeedFormat = "json" | "csv" | "plaintext" | "stix" | "misp";
+export type FeedFormat =
+  | "json"
+  | "csv"
+  | "plaintext"
+  | "stix"
+  | "misp"
+  | "taxii";
 
 export interface ThreatFeed {
   id: string;

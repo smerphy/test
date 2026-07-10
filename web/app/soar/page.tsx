@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
 import { ErrorNote, PageHeader } from "@/components/Page";
@@ -8,6 +9,10 @@ import {
 } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
+
+function fail(e: unknown): never {
+  redirect(`/soar?error=${encodeURIComponent((e as Error).message)}`);
+}
 
 const SEVERITIES = ["info", "low", "medium", "high", "critical"];
 const CATEGORIES = [
@@ -39,23 +44,31 @@ async function createAction(formData: FormData): Promise<void> {
     (a) => ({ type: a.value })
   );
 
-  await api.createPlaybook({
-    name: formData.get("name") as string,
-    description: (formData.get("description") as string) || undefined,
-    priority: Number(formData.get("priority") ?? 100),
-    stop_on_match: formData.get("stop_on_match") === "on",
-    conditions,
-    actions,
-  });
+  try {
+    await api.createPlaybook({
+      name: formData.get("name") as string,
+      description: (formData.get("description") as string) || undefined,
+      priority: Number(formData.get("priority") ?? 100),
+      stop_on_match: formData.get("stop_on_match") === "on",
+      conditions,
+      actions,
+    });
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/soar");
 }
 
 async function toggleAction(formData: FormData): Promise<void> {
   "use server";
-  await api.setPlaybookEnabled(
-    formData.get("id") as string,
-    formData.get("enabled") === "true"
-  );
+  try {
+    await api.setPlaybookEnabled(
+      formData.get("id") as string,
+      formData.get("enabled") === "true"
+    );
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/soar");
 }
 
@@ -71,7 +84,12 @@ function conditionSummary(c: Record<string, unknown>): string {
   return parts.length ? parts.join(" · ") : "any finding";
 }
 
-export default async function SoarPage() {
+export default async function SoarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
   let playbooks: Playbook[] = [];
   let executions: PlaybookExecution[] = [];
   let error: string | null = null;
@@ -94,6 +112,9 @@ export default async function SoarPage() {
         }
       />
 
+      {params.error && (
+        <ErrorNote message={decodeURIComponent(params.error)} title="Action failed" />
+      )}
       {error && <ErrorNote message={error} />}
 
       <Card title="Playbooks">

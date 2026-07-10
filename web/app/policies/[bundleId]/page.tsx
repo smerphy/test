@@ -13,8 +13,8 @@ export default async function BundleDetailPage({
   let versions: PolicyVersion[] = [];
   let error: string | null = null;
   try {
-    const summaries = await api.listVersions(bundleId);
-    versions = await Promise.all(summaries.map((s) => api.getVersion(s.id)));
+    // One call fetches every version with its yaml_text (no per-version N+1).
+    versions = await api.listVersionsFull(bundleId);
   } catch (e) {
     error = (e as Error).message;
   }

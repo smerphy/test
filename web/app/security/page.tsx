@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Card, Stat } from "@/components/Card";
 import { ErrorNote, PageHeader } from "@/components/Page";
@@ -12,25 +13,41 @@ import { roleAtLeast } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
+function fail(e: unknown): never {
+  redirect(`/security?error=${encodeURIComponent((e as Error).message)}`);
+}
+
 async function engageAction(): Promise<void> {
   "use server";
-  await api.engageKillSwitch();
+  try {
+    await api.engageKillSwitch();
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/security");
 }
 
 async function releaseAction(): Promise<void> {
   "use server";
-  await api.releaseKillSwitch();
+  try {
+    await api.releaseKillSwitch();
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/security");
 }
 
 async function breakGlassAction(formData: FormData): Promise<void> {
   "use server";
-  await api.grantBreakGlass({
-    agent_id: formData.get("agent_id") as string,
-    reason: formData.get("reason") as string,
-    minutes: Number(formData.get("minutes") ?? 60),
-  });
+  try {
+    await api.grantBreakGlass({
+      agent_id: formData.get("agent_id") as string,
+      reason: formData.get("reason") as string,
+      minutes: Number(formData.get("minutes") ?? 60),
+    });
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/security");
 }
 
@@ -58,7 +75,12 @@ function Bars({ data }: { data: Record<string, number> }) {
   );
 }
 
-export default async function SecurityPage() {
+export default async function SecurityPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
   let overview: SecurityOverview | null = null;
   let telemetry: TelemetryStats | null = null;
   let error: string | null = null;
@@ -95,6 +117,9 @@ export default async function SecurityPage() {
         }
       />
 
+      {params.error && (
+        <ErrorNote message={decodeURIComponent(params.error)} title="Action failed" />
+      )}
       {error && <ErrorNote message={error} />}
 
       {killswitch && (

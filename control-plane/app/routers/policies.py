@@ -175,6 +175,31 @@ def list_versions(
     return list(bundle.versions)
 
 
+@router.get(
+    "/bundles/{bundle_id}/versions/full",
+    response_model=list[PolicyVersionOut],
+)
+def list_versions_full(
+    bundle_id: str,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> list[PolicyVersion]:
+    """List versions of a bundle *with* their full `yaml_text` in one call.
+
+    The version rows are already loaded by the relationship, so this is a
+    single round-trip — it lets a client render every version's YAML without
+    an N+1 of `GET /versions/{id}` per version."""
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
+    return list(bundle.versions)
+
+
 @router.get("/versions/{version_id}", response_model=PolicyVersionOut)
 def get_version(
     version_id: str,
