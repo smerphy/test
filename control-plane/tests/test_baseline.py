@@ -60,9 +60,11 @@ class _Chain:
         self.seq += 1
 
 
-def _train(session: Session, org: Organization) -> _Chain:
+def _train(
+    session: Session, org: Organization, *, anchor: datetime = NOW
+) -> _Chain:
     chain = _Chain()
-    old = NOW - timedelta(days=5)
+    old = anchor - timedelta(days=5)
     for i in range(10):
         chain.add(session, org, tool="http.get", decision="allow",
                   ts=old + timedelta(seconds=i))
@@ -148,7 +150,10 @@ def test_detect_drift_ignores_low_volume(
 
 # --- endpoints --------------------------------------------------------------
 def test_baseline_endpoints(client: TestClient, session: Session, org: Organization) -> None:
-    _train(session, org)
+    # The endpoint uses the real wall clock (it takes no `now`), so anchor the
+    # training data to *now* — otherwise fixed timestamps silently age out of
+    # the 30-day lookback window and the endpoint sees zero events.
+    _train(session, org, anchor=datetime.now(UTC))
     session.commit()
     assert client.post("/baselines/rebuild").json() == {"agents": 1, "events": 12}
     rows = client.get("/baselines").json()

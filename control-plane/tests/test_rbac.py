@@ -109,16 +109,19 @@ def test_api_key_default_role_governs_unlisted_keys(
     assert c.post("/findings/run").status_code == 403
 
 
-def test_first_user_is_owner_rest_are_admins(session: Session) -> None:
+def test_first_user_is_owner_rest_are_viewers(session: Session) -> None:
     from app.routers.auth import _upsert_user
 
     a = _upsert_user(session, email="alice@acmecorp.com", name="Alice")
     b = _upsert_user(session, email="bob@acmecorp.com", name="Bob")
     session.commit()
-    # Same corporate org, but the founder owns it and teammates default to admin.
+    # Same corporate org: the founder owns it, but teammates who auto-join a
+    # shared corporate tenant default to least-privilege `viewer` (an owner
+    # elevates them via /users). Auto-granting admin would be a privilege
+    # escalation for anyone who controls a corporate-domain mailbox.
     assert a.organization_id == b.organization_id
     assert a.role == Role.OWNER.value
-    assert b.role == Role.ADMIN.value
+    assert b.role == Role.VIEWER.value
 
 
 def test_users_me_404_for_api_key(client: TestClient) -> None:

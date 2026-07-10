@@ -133,6 +133,9 @@ async def callback(
     user = _upsert_user(session, email=email, name=profile.get("name"))
     request.session["user_id"] = user.id
     request.session["epoch"] = user.session_epoch
+    # Fresh login: force MFA step-up (if enabled) again — never inherit a prior
+    # session's mfa_ok flag on a reused cookie.
+    request.session.pop("mfa_ok", None)
     # Escape the provider-supplied email before reflecting it into HTML.
     return HTMLResponse(
         f'<p>Signed in as {html.escape(email)}. <a href="/">Continue</a>.</p>'
@@ -315,13 +318,15 @@ def _upsert_user(session: Session, *, email: str, name: str | None) -> User:
         session.add(org)
         session.flush()
 
-    # The first user to land in an org owns it; later teammates who auto-join
-    # a shared corporate tenant default to the column's `admin` role and can
-    # be adjusted by an owner via the /users API.
+    # The first user to land in an org owns it; later teammates who auto-join a
+    # shared corporate tenant default to least-privilege `viewer` (matching the
+    # SCIM provisioning path) and are elevated by an owner via the /users API.
+    # Granting admin to anyone with a corporate-domain email would be a privilege
+    # escalation.
     has_members = session.execute(
         select(User.id).where(User.organization_id == org.id).limit(1)
     ).first()
-    role = Role.ADMIN.value if has_members else Role.OWNER.value
+    role = Role.VIEWER.value if has_members else Role.OWNER.value
 
     user = User(email=email, name=name, organization_id=org.id, role=role)
     session.add(user)
