@@ -12,6 +12,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import MetricEvent
@@ -33,9 +34,31 @@ def _to_utc(ts: datetime) -> datetime:
     return ts.astimezone(UTC)
 
 
+def _by_request_id(
+    session: Session, *, org_id: str, request_id: str
+) -> MetricEvent | None:
+    return session.execute(
+        select(MetricEvent).where(
+            MetricEvent.organization_id == org_id,
+            MetricEvent.request_id == request_id,
+        )
+    ).scalar_one_or_none()
+
+
 def ingest_metric(
     session: Session, *, org_id: str, event: MetricEventIn
 ) -> MetricEvent:
+    # At-least-once shipping means a lost ack makes the SDK re-ship a metric the
+    # server already committed. Dedup on (org, request_id) so the retry returns
+    # the existing row instead of double-counting cost/tokens. Pre-check first,
+    # then contain the TOCTOU race on the unique constraint in a savepoint.
+    if event.request_id is not None:
+        existing = _by_request_id(
+            session, org_id=org_id, request_id=event.request_id
+        )
+        if existing is not None:
+            return existing
+
     cost = event.cost_usd
     if cost is None:
         cost = compute_cost_usd(
@@ -66,7 +89,21 @@ def ingest_metric(
         metadata_=dict(event.metadata),
     )
     session.add(row)
-    session.flush()
+    try:
+        with session.begin_nested():
+            session.flush()
+    except IntegrityError:
+        # Lost the race (or a NULL-request_id constraint we don't dedup). Drop
+        # the orphaned pending row so the request's outer commit doesn't retry
+        # the failed INSERT, then return the winner if this was a dup.
+        session.expunge(row)
+        if event.request_id is not None:
+            existing = _by_request_id(
+                session, org_id=org_id, request_id=event.request_id
+            )
+            if existing is not None:
+                return existing
+        raise
     return row
 
 

@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -63,4 +72,12 @@ class MetricEvent(IdMixin, TimestampMixin, Base):
         Index("ix_metric_org_agent", "organization_id", "agent_id"),
         Index("ix_metric_org_status", "organization_id", "status"),
         Index("ix_metric_org_project", "organization_id", "project_id"),
+        # Idempotency key for at-least-once shipping: a retried metric carrying
+        # the same request_id must not create a duplicate row (which would
+        # double-count cost/tokens and wrongly trip spend enforcement). NULL
+        # request_ids are distinct under a unique constraint on both SQLite and
+        # Postgres, so metrics without a request_id are unaffected.
+        UniqueConstraint(
+            "organization_id", "request_id", name="uq_metric_org_request"
+        ),
     )
