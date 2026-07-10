@@ -24,8 +24,12 @@ function resolvePath(input: PolicyInput, path: string): unknown {
   for (const part of path.split(".")) {
     if (current === null || current === undefined) return MISSING;
     if (typeof current !== "object") return MISSING;
+    // Match Python's dict-only semantics: own keys only (not inherited
+    // prototype members like `constructor`/`toString`), and arrays are not
+    // traversable (Python lists are not dicts, so a path into one is MISSING).
+    if (Array.isArray(current)) return MISSING;
     const obj = current as Record<string, unknown>;
-    if (!(part in obj)) return MISSING;
+    if (!Object.prototype.hasOwnProperty.call(obj, part)) return MISSING;
     current = obj[part];
   }
   return current;

@@ -25,6 +25,26 @@ describe("Anthropic middleware", () => {
     expect(out).toEqual(blocks);
   });
 
+  it("fails CLOSED when name/input is missing or non-object", () => {
+    const allowAll = () =>
+      client([{ id: "p", effect: "allow", reason: "x", when: { op: "always" } }]);
+    const bad = [
+      { type: "tool_use" as const, id: "t", name: "http.get", input: ["x"] },
+      { type: "tool_use" as const, id: "t", name: "http.get", input: "str" },
+      { type: "tool_use" as const, id: "t", name: 123, input: { url: "x" } },
+      { type: "tool_use" as const, id: "t", name: "http.get" }, // input absent
+    ];
+    for (const block of bad) {
+      const out = gateToolUseBlocks([block as never], {
+        client: allowAll(),
+        sessionId: "s",
+      });
+      const first = out[0] as { input: Record<string, unknown> };
+      expect(first.input.__ephorate_blocked__).toBe(true); // denied despite allow-all
+      expect(first.input.decision).toBe("deny");
+    }
+  });
+
   it("ALLOW passes block unchanged", () => {
     const block = tuBlock("http.get", { url: "https://x" });
     const out = gateToolUseBlocks([block], {

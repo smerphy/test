@@ -29,6 +29,10 @@ function isToolUse(block: ContentBlock): block is ToolUseBlock {
   return block.type === "tool_use";
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
 export function gateToolUseBlocks(
   blocks: ContentBlock[],
   opts: { client: EphorateClient } & EvaluateOptions,
@@ -36,7 +40,21 @@ export function gateToolUseBlocks(
   const { client, ...evalOpts } = opts;
   return blocks.map((block) => {
     if (!isToolUse(block)) return block;
-    const result = client.evaluate(block.name, block.input ?? {}, {
+    // Fail closed: a malformed block (non-string name, or input that is absent
+    // or not a plain object) cannot be evaluated against what will execute, so
+    // deny it rather than coerce input to `{}` and emit the original block.
+    if (typeof block.name !== "string" || !isPlainObject(block.input)) {
+      return {
+        ...block,
+        input: {
+          ...DENY_TEMPLATE,
+          policy_id: null,
+          reason: "unevaluatable tool_use block (missing/invalid name or input)",
+          decision: "deny",
+        },
+      };
+    }
+    const result = client.evaluate(block.name, block.input, {
       ...evalOpts,
       toolUseId: block.id,
     });
