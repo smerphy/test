@@ -174,6 +174,14 @@ def _run_action(
     return {"type": atype, "ok": ok, "detail": detail}
 
 
+def enabled_playbooks(
+    session: Session, org: Organization
+) -> list[ResponsePlaybook]:
+    """Public: the org's enabled playbooks in priority order. Fetch once per
+    sweep and pass into :func:`run_playbooks` to avoid an N+1."""
+    return _enabled_playbooks(session, org)
+
+
 def _enabled_playbooks(
     session: Session, org: Organization
 ) -> list[ResponsePlaybook]:
@@ -192,11 +200,19 @@ def _enabled_playbooks(
 
 
 def run_playbooks(
-    session: Session, org: Organization, finding: Finding
+    session: Session,
+    org: Organization,
+    finding: Finding,
+    *,
+    playbooks: list[ResponsePlaybook] | None = None,
 ) -> list[PlaybookExecution]:
     """Evaluate enabled playbooks against a finding and run matching actions.
-    Returns the executions recorded (one per fired playbook)."""
-    playbooks = _enabled_playbooks(session, org)
+    Returns the executions recorded (one per fired playbook).
+
+    Pass ``playbooks`` (from :func:`enabled_playbooks`) to reuse a single query
+    across many findings in one sweep instead of re-selecting per finding."""
+    if playbooks is None:
+        playbooks = _enabled_playbooks(session, org)
 
     executions: list[PlaybookExecution] = []
     for playbook in playbooks:
@@ -251,4 +267,9 @@ def simulate_playbooks(
     return preview
 
 
-__all__ = ["matches", "run_playbooks", "simulate_playbooks"]
+__all__ = [
+    "enabled_playbooks",
+    "matches",
+    "run_playbooks",
+    "simulate_playbooks",
+]

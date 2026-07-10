@@ -29,7 +29,7 @@ from app.models import (
     Organization,
 )
 from app.services.quarantine import auto_quarantine_for_finding
-from app.services.soar import run_playbooks
+from app.services.soar import enabled_playbooks, run_playbooks
 from app.services.threat_intel import build_index, match_activity, severity_rank
 
 # Tunables (would move to per-org config later).
@@ -285,9 +285,13 @@ def _event_matches(row: _EventRow, spec: dict[str, Any]) -> bool:
 
 
 def _detect_custom_rules(
-    session: Session, org_id: str, rows: list[_EventRow]
+    session: Session, org_id: str, now: datetime
 ) -> list[FindingDraft]:
-    """Evaluate the org's enabled detection-as-code rules over the window."""
+    """Evaluate the org's enabled detection-as-code rules, each over ITS OWN
+    ``window_minutes`` (a validated 1..1440 field, default 60). Events are
+    loaded once per distinct window so a rule with a wider window sees the
+    events it was configured for instead of being silently clamped to the
+    global run window."""
     rules = list(
         session.execute(
             select(DetectionRule).where(
@@ -296,6 +300,24 @@ def _detect_custom_rules(
             )
         ).scalars()
     )
+    # Group rules by window so we issue one events query per distinct window.
+    rules_by_window: dict[int, list[DetectionRule]] = defaultdict(list)
+    for rule in rules:
+        wm = int((rule.spec or {}).get("window_minutes", DEFAULT_WINDOW_MINUTES))
+        wm = max(1, min(wm, 1440))
+        rules_by_window[wm].append(rule)
+
+    drafts: list[FindingDraft] = []
+    for window_minutes, window_rules in rules_by_window.items():
+        since = _naive_utc(now - timedelta(minutes=window_minutes))
+        rows = _window_events(session, org_id, since)
+        drafts += _eval_custom_rules(window_rules, rows)
+    return drafts
+
+
+def _eval_custom_rules(
+    rules: list[DetectionRule], rows: list[_EventRow]
+) -> list[FindingDraft]:
     drafts: list[FindingDraft] = []
     for rule in rules:
         spec = rule.spec or {}
@@ -492,7 +514,7 @@ def run_detections(
     drafts += _detect_injection_exfil_killchain(rows)
     drafts += _detect_approval_abuse(rows)
     drafts += _detect_new_tool_anomaly(session, org_id, rows, baseline_since, since)
-    drafts += _detect_custom_rules(session, org_id, rows)
+    drafts += _detect_custom_rules(session, org_id, now)
     drafts += _detect_threat_intel(session, org_id, since)
 
     created = updated = 0
@@ -511,12 +533,16 @@ def run_detections(
     quarantined = 0
     playbooks_fired = 0
     org = session.get(Organization, org_id)
-    if org is not None:
+    if org is not None and new_findings:
+        # Fetch the enabled playbooks once for the whole sweep, not per finding.
+        playbooks = enabled_playbooks(session, org)
         for finding in new_findings:
             if auto_quarantine_for_finding(session, org, finding) is not None:
                 quarantined += 1
         for finding in new_findings:
-            playbooks_fired += len(run_playbooks(session, org, finding))
+            playbooks_fired += len(
+                run_playbooks(session, org, finding, playbooks=playbooks)
+            )
     session.flush()
     return {
         "created": created,

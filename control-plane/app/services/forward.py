@@ -15,6 +15,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models import Finding, FindingSeverity, Organization
+from app.services._http import owned_client
 from app.services.egress import is_safe_webhook_url
 
 # Ordering for the min-severity threshold.
@@ -91,13 +92,13 @@ def forward_finding(
         return False
     if not is_safe_webhook_url(org.finding_webhook_url):
         return False
-    client = http_client or httpx.Client(timeout=10.0)
     try:
-        r = client.post(
-            org.finding_webhook_url, json=build_finding_event(finding, org)
-        )
-        r.raise_for_status()
-        return True
+        with owned_client(http_client, timeout=10.0) as client:
+            r = client.post(
+                org.finding_webhook_url, json=build_finding_event(finding, org)
+            )
+            r.raise_for_status()
+            return True
     except Exception:
         return False
 

@@ -21,6 +21,7 @@ from app.models import (
     NotificationConnector,
     Organization,
 )
+from app.services._http import owned_client
 from app.services.crypto import unseal
 from app.services.egress import is_safe_webhook_url
 from app.services.forward import build_finding_event
@@ -199,8 +200,8 @@ def deliver_one(
 ) -> bool:
     """Deliver a finding to a single connector, ignoring the severity gate
     (used by the test endpoint). Never raises."""
-    client = http_client or httpx.Client(timeout=10.0)
-    return _send(connector, finding, org, client)
+    with owned_client(http_client, timeout=10.0) as client:
+        return _send(connector, finding, org, client)
 
 
 def dispatch_finding(
@@ -222,13 +223,13 @@ def dispatch_finding(
     )
     if not connectors:
         return 0
-    client = http_client or httpx.Client(timeout=10.0)
     delivered = 0
-    for connector in connectors:
-        if _rank(str(finding.severity)) < _rank(connector.min_severity):
-            continue
-        if _send(connector, finding, org, client):
-            delivered += 1
+    with owned_client(http_client, timeout=10.0) as client:
+        for connector in connectors:
+            if _rank(str(finding.severity)) < _rank(connector.min_severity):
+                continue
+            if _send(connector, finding, org, client):
+                delivered += 1
     return delivered
 
 

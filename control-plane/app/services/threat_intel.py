@@ -38,6 +38,7 @@ from app.models import (
     ThreatFeed,
     ThreatIndicator,
 )
+from app.services._http import owned_client
 from app.services.crypto import unseal
 from app.services.egress import EgressBlocked, assert_safe_webhook_url
 
@@ -509,10 +510,10 @@ def fetch_feed_content(
     if auth_header and ":" in auth_header:
         name, _, val = auth_header.partition(":")
         headers[name.strip()] = val.strip()
-    client = http_client or httpx.Client(timeout=FETCH_TIMEOUT_SECONDS)
-    resp = client.get(feed.url, headers=headers)
-    resp.raise_for_status()
-    body = resp.content[:MAX_FEED_BYTES]
+    with owned_client(http_client, timeout=FETCH_TIMEOUT_SECONDS) as client:
+        resp = client.get(feed.url, headers=headers)
+        resp.raise_for_status()
+        body = resp.content[:MAX_FEED_BYTES]
     return body.decode("utf-8", errors="replace")
 
 
@@ -556,7 +557,6 @@ def poll_taxii_collection(
         raise FeedParseError("TAXII feed has no collection URL")
     assert_safe_webhook_url(url)
     headers = _taxii_headers(auth_header)
-    client = http_client or httpx.Client(timeout=FETCH_TIMEOUT_SECONDS)
 
     params: dict[str, str] = {}
     if added_after is not None:
@@ -564,25 +564,26 @@ def poll_taxii_collection(
 
     objects: list[dict[str, Any]] = []
     next_cursor: str | None = None
-    for _ in range(max_pages):
-        page_params = dict(params)
-        if next_cursor:
-            page_params["next"] = next_cursor
-        resp = client.get(url, headers=headers, params=page_params)
-        resp.raise_for_status()
-        envelope = resp.json()
-        if not isinstance(envelope, dict):
-            raise FeedParseError("TAXII response is not a JSON envelope")
-        page_objects = envelope.get("objects", [])
-        if isinstance(page_objects, list):
-            objects.extend(o for o in page_objects if isinstance(o, dict))
-        if len(objects) >= MAX_INDICATORS_PER_SYNC:
-            break
-        if not envelope.get("more"):
-            break
-        next_cursor = envelope.get("next")
-        if not next_cursor:
-            break
+    with owned_client(http_client, timeout=FETCH_TIMEOUT_SECONDS) as client:
+        for _ in range(max_pages):
+            page_params = dict(params)
+            if next_cursor:
+                page_params["next"] = next_cursor
+            resp = client.get(url, headers=headers, params=page_params)
+            resp.raise_for_status()
+            envelope = resp.json()
+            if not isinstance(envelope, dict):
+                raise FeedParseError("TAXII response is not a JSON envelope")
+            page_objects = envelope.get("objects", [])
+            if isinstance(page_objects, list):
+                objects.extend(o for o in page_objects if isinstance(o, dict))
+            if len(objects) >= MAX_INDICATORS_PER_SYNC:
+                break
+            if not envelope.get("more"):
+                break
+            next_cursor = envelope.get("next")
+            if not next_cursor:
+                break
     return objects
 
 
@@ -600,10 +601,10 @@ def discover_taxii_collections(
     base = api_root_url.rstrip("/")
     collections_url = base + "/collections/"
     assert_safe_webhook_url(collections_url)
-    client = http_client or httpx.Client(timeout=FETCH_TIMEOUT_SECONDS)
-    resp = client.get(collections_url, headers=_taxii_headers(auth_header))
-    resp.raise_for_status()
-    body = resp.json()
+    with owned_client(http_client, timeout=FETCH_TIMEOUT_SECONDS) as client:
+        resp = client.get(collections_url, headers=_taxii_headers(auth_header))
+        resp.raise_for_status()
+        body = resp.json()
     raw = body.get("collections", []) if isinstance(body, dict) else []
     out: list[dict[str, Any]] = []
     for c in raw:

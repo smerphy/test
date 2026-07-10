@@ -22,7 +22,7 @@ import gzip
 import json
 import os
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from app.settings import Settings, get_settings
@@ -142,7 +142,10 @@ def archive_events(kind: str, org_id: str, records: list[Record]) -> int:
     if not sink.enabled or not records:
         return 0
     try:
-        return sink.archive(kind, org_id, records, datetime.now())
+        # UTC so the Hive date= partition matches the event's UTC timestamp and
+        # the archived_at stamp; a naive server-local clock would misfile
+        # events near local midnight and break date-partition pushdown queries.
+        return sink.archive(kind, org_id, records, datetime.now(UTC))
     except OSError:
         # Cold-tier failure must never break hot ingestion.
         return 0

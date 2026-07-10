@@ -76,13 +76,18 @@ def rebuild_baselines(
         sessions[r.agent_id].add(r.session_id)
         totals[r.agent_id] += 1
 
-    for agent_id, total in totals.items():
-        baseline = session.execute(
+    # Prefetch existing baselines for the org in one query, keyed by agent, so
+    # the upsert loop doesn't SELECT per agent (N+1).
+    existing_baselines = {
+        b.agent_id: b
+        for b in session.execute(
             select(AgentBaseline).where(
-                AgentBaseline.organization_id == org_id,
-                AgentBaseline.agent_id == agent_id,
+                AgentBaseline.organization_id == org_id
             )
-        ).scalar_one_or_none()
+        ).scalars()
+    }
+    for agent_id, total in totals.items():
+        baseline = existing_baselines.get(agent_id)
         fields = dict(
             window_start=start,
             window_end=now,
@@ -168,16 +173,23 @@ def detect_drift(
         ).scalars()
     )
 
+    # Load every agent's recent events in ONE query and bucket by agent, rather
+    # than issuing a separate SELECT per baseline (N+1 on a periodic sweep).
+    recent_by_agent: dict[str, list[Any]] = defaultdict(list)
+    for row in session.execute(
+        select(
+            AuditEvent.agent_id, AuditEvent.tool_name, AuditEvent.decision
+        ).where(
+            AuditEvent.organization_id == org.id,
+            AuditEvent.timestamp >= since,
+        )
+    ):
+        recent_by_agent[row.agent_id].append(row)
+
     findings = 0
     checked = 0
     for baseline in baselines:
-        recent = session.execute(
-            select(AuditEvent.tool_name, AuditEvent.decision).where(
-                AuditEvent.organization_id == org.id,
-                AuditEvent.agent_id == baseline.agent_id,
-                AuditEvent.timestamp >= since,
-            )
-        ).all()
+        recent = recent_by_agent.get(baseline.agent_id, [])
         if len(recent) < _MIN_RECENT_EVENTS:
             continue
         checked += 1

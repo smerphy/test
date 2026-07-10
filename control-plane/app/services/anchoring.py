@@ -12,18 +12,35 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuditAnchor, AuditEvent, Organization
 from app.services.event_store import archive_events
 
 _GENESIS = "0" * 64
-_MAX_EVENTS = 500_000
 
 
 def _chain_heads(session: Session, org_id: str) -> tuple[list[dict[str, Any]], int]:
-    """Head {agent, session, seq, hash} per chain + total event count."""
+    """Head {agent, session, seq, hash} per chain + total event count.
+
+    Computed entirely in SQL: a per-(agent, session) MAX(seq) grouped subquery
+    joined back to fetch the head hash, plus a COUNT(*) for the total. An
+    earlier version pulled up to 500k rows with no ORDER BY and reduced in
+    Python — for a larger org that returned an arbitrary subset, so both the
+    event count and a chain's true head could be wrong and tampering past the
+    truncation boundary went undetected.
+    """
+    head_seq = (
+        select(
+            AuditEvent.agent_id,
+            AuditEvent.session_id,
+            func.max(AuditEvent.seq).label("max_seq"),
+        )
+        .where(AuditEvent.organization_id == org_id)
+        .group_by(AuditEvent.agent_id, AuditEvent.session_id)
+        .subquery()
+    )
     rows = session.execute(
         select(
             AuditEvent.agent_id,
@@ -31,20 +48,24 @@ def _chain_heads(session: Session, org_id: str) -> tuple[list[dict[str, Any]], i
             AuditEvent.seq,
             AuditEvent.hash,
         )
+        .join(
+            head_seq,
+            (AuditEvent.agent_id == head_seq.c.agent_id)
+            & (AuditEvent.session_id == head_seq.c.session_id)
+            & (AuditEvent.seq == head_seq.c.max_seq),
+        )
         .where(AuditEvent.organization_id == org_id)
-        .limit(_MAX_EVENTS)
     ).all()
-    heads: dict[tuple[str, str], tuple[int, str]] = {}
-    for agent_id, session_id, seq, h in rows:
-        key = (agent_id, session_id)
-        cur = heads.get(key)
-        if cur is None or seq > cur[0]:
-            heads[key] = (seq, h)
     chains = [
-        {"agent": a, "session": s, "seq": seq, "hash": h}
-        for (a, s), (seq, h) in sorted(heads.items())
+        {"agent": agent_id, "session": session_id, "seq": seq, "hash": h}
+        for agent_id, session_id, seq, h in sorted(rows)
     ]
-    return chains, len(rows)
+    event_count = session.execute(
+        select(func.count())
+        .select_from(AuditEvent)
+        .where(AuditEvent.organization_id == org_id)
+    ).scalar_one()
+    return chains, event_count
 
 
 def _root(chains: list[dict[str, Any]]) -> str:

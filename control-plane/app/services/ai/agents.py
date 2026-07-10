@@ -28,7 +28,11 @@ from typing import Any
 from app.services.ai.providers import LLMError, LLMProvider
 
 DECISIONS = {"allow", "deny", "require_approval", "abstain"}
-_RANK = {"allow": 0, "require_approval": 1, "deny": 2}
+# `transform` (redact-args-and-proceed) is a real engine decision ranked
+# between allow and require_approval. The AI can never emit it (DECISIONS omits
+# it), but the deterministic side can, so it must be in the ladder or an
+# enforce-mode transform silently degrades to require_approval.
+_RANK = {"allow": 0, "transform": 1, "require_approval": 2, "deny": 3}
 
 _JSON_OBJ = re.compile(r"\{.*\}", re.DOTALL)
 _JSON_ARR = re.compile(r"\[.*\]", re.DOTALL)
@@ -175,7 +179,9 @@ def reconcile(deterministic: str, ai_decision: str, *, mode: str) -> str:
     """
     if mode != "enforce":
         return deterministic
-    det_rank = _RANK.get(deterministic, 1)
+    # Unknown deterministic decisions fail safe to require_approval (not the
+    # rank-1 key, which is now `transform`).
+    det_rank = _RANK.get(deterministic, _RANK["require_approval"])
     ai_rank = _RANK.get(ai_decision, 0) if ai_decision in ("deny", "require_approval") else 0
     return next(k for k, v in _RANK.items() if v == max(det_rank, ai_rank))
 

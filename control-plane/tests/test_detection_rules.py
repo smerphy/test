@@ -19,13 +19,14 @@ def _audit(
     matched_policy_id: str | None = None,
     tool_name: str = "http.post",
     session_id: str = "s1",
+    age_minutes: int = 1,
 ) -> None:
     _SEQ[0] += 1
     session.add(
         AuditEvent(
             organization_id=org.id,
             seq=_SEQ[0],
-            timestamp=datetime.now(UTC) - timedelta(minutes=1),
+            timestamp=datetime.now(UTC) - timedelta(minutes=age_minutes),
             agent_id="agent-1",
             session_id=session_id,
             tool_name=tool_name,
@@ -122,6 +123,59 @@ def test_custom_rule_produces_findings(
     assert len(fs) == 1
     assert fs[0].count == 2
     assert fs[0].owasp_llm == "LLM01"
+
+
+def test_custom_rule_honors_its_own_window(
+    session: Session, org: Organization
+) -> None:
+    # A rule configured for a 4-hour window must see events older than the
+    # default 60-minute run window; a rule with a short window must not.
+    session.add(
+        DetectionRule(
+            organization_id=org.id,
+            name="wide-window",
+            enabled=True,
+            severity="high",
+            category="abuse",
+            spec={
+                "decision": "deny",
+                "tool_name": "shell.exec",
+                "group_by": "agent",
+                "threshold": 2,
+                "window_minutes": 240,
+            },
+        )
+    )
+    session.add(
+        DetectionRule(
+            organization_id=org.id,
+            name="narrow-window",
+            enabled=True,
+            severity="high",
+            category="abuse",
+            spec={
+                "decision": "deny",
+                "tool_name": "shell.exec",
+                "group_by": "agent",
+                "threshold": 2,
+                "window_minutes": 30,
+            },
+        )
+    )
+    session.commit()
+    # Two matching denials ~3 hours ago (outside the 60-min default window).
+    _audit(session, org, decision="deny", tool_name="shell.exec", age_minutes=180)
+    _audit(session, org, decision="deny", tool_name="shell.exec", age_minutes=181)
+    session.commit()
+
+    run_detections(session, org_id=org.id)
+    session.commit()
+    fired = {
+        f.rule_id
+        for f in session.query(Finding).filter(Finding.organization_id == org.id)
+    }
+    assert "wide-window" in fired  # 240-min window sees the 3h-old events
+    assert "narrow-window" not in fired  # 30-min window does not
 
 
 def test_custom_rule_below_threshold_no_finding(

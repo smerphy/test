@@ -120,15 +120,24 @@ def apply_retention(
         day = r.timestamp.date()
         agg[(day, r.agent_id, r.decision)] += 1
 
-    for (day, agent_id, decision), count in agg.items():
-        existing = session.execute(
+    # Load every existing rollup that could match this batch in ONE query
+    # (bounded by the batch's distinct days/agents), then reconcile in Python.
+    # The old code ran a SELECT per (day, agent, decision) bucket — thousands
+    # of round-trips per pass for a batch spanning many agents/days.
+    days = {day for day, _, _ in agg}
+    agents = {agent_id for _, agent_id, _ in agg}
+    existing_by_key: dict[tuple[date, str, str], AuditDailyRollup] = {
+        (r.day, r.agent_id, r.decision): r
+        for r in session.execute(
             select(AuditDailyRollup).where(
                 AuditDailyRollup.organization_id == org_id,
-                AuditDailyRollup.day == day,
-                AuditDailyRollup.agent_id == agent_id,
-                AuditDailyRollup.decision == decision,
+                AuditDailyRollup.day.in_(days),
+                AuditDailyRollup.agent_id.in_(agents),
             )
-        ).scalar_one_or_none()
+        ).scalars()
+    }
+    for (day, agent_id, decision), count in agg.items():
+        existing = existing_by_key.get((day, agent_id, decision))
         if existing is not None:
             existing.count += count
         else:
