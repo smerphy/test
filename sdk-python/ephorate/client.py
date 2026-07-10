@@ -92,9 +92,10 @@ class EphorateClient:
                 control_plane_url, api_key=api_key, org_slug=org_slug
             )
 
-        # EDR kill-switch: when a control plane is configured, consult active
-        # quarantines before evaluating policy so an isolated agent/session is
-        # denied inline.
+        # EDR kill-switch: when a control plane is configured, consult the
+        # authoritative /quarantines/check (global kill-switch + spend guard +
+        # per-entity quarantines) before evaluating policy so an isolated
+        # agent/session is denied inline.
         self._quarantine: QuarantineGuard | None = None
         if control_plane_url is not None and enable_quarantine:
             self._quarantine = QuarantineGuard(
@@ -205,6 +206,10 @@ class EphorateClient:
         if self._shipper is not None:
             self._shipper.stop()
         self._audit.close()
+        # Release the quarantine guard's connection pool.
+        if self._quarantine is not None:
+            with contextlib.suppress(Exception):
+                self._quarantine.close()
         # Release the heartbeat / finding-report HTTP client we created.
         if self._heartbeat_client is not None:
             with contextlib.suppress(Exception):
