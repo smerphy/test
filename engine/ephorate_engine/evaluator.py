@@ -79,6 +79,10 @@ def _compile_regex(pattern: str) -> re.Pattern[str]:
 # legitimately-`None` value at a path is not confused with "missing".
 _MISSING: Any = object()
 
+# Cap on the input length a `matches` regex evaluates, bounding worst-case
+# backtracking on adversarially long agent-supplied strings.
+_MAX_MATCH_INPUT = 8192
+
 
 def _resolve_path(policy_input: PolicyInput, path: str) -> Any:
     """Walk a dotted path into a PolicyInput. Returns `_MISSING` if any segment fails.
@@ -115,7 +119,12 @@ def _eval(predicate: Predicate, policy_input: PolicyInput) -> bool:
         value = _resolve_path(policy_input, predicate.path)
         if value is _MISSING or not isinstance(value, str):
             return False
-        return bool(_compile_regex(predicate.pattern).search(value))
+        # Bound the input the (author-supplied) regex runs against so a
+        # pathological pattern can't be amplified into catastrophic
+        # backtracking by an agent supplying a very long string.
+        return bool(
+            _compile_regex(predicate.pattern).search(value[:_MAX_MATCH_INPUT])
+        )
     if isinstance(predicate, AndPredicate):
         return all(_eval(c, policy_input) for c in predicate.clauses)
     if isinstance(predicate, OrPredicate):

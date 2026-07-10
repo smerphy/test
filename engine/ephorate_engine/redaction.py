@@ -81,8 +81,16 @@ def redact_value(value: Any) -> tuple[Any, set[str]]:
     if isinstance(value, dict):
         out_d: dict[Any, Any] = {}
         for k, v in value.items():
+            # Redact string keys too — PII can live in a key (e.g. an email
+            # used as a map key), which would otherwise leak un-masked into the
+            # tamper-evident audit record.
+            if isinstance(k, str):
+                rk, tk = redact_text(k)
+                found |= tk
+            else:
+                rk = k
             rv, t = redact_value(v)
-            out_d[k] = rv
+            out_d[rk] = rv
             found |= t
         return out_d, found
     if isinstance(value, list):

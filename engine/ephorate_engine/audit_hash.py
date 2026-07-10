@@ -39,12 +39,19 @@ def canonical_timestamp(value: datetime) -> str:
 
 
 def canonical_bytes(payload: dict[str, Any]) -> bytes:
-    """Canonical JSON bytes: sorted keys, no whitespace, raw UTF-8."""
+    """Canonical JSON bytes: sorted keys, no whitespace, raw UTF-8.
+
+    Rejects non-finite floats (NaN / Infinity): ``json.dumps`` would otherwise
+    emit the non-standard ``NaN`` / ``Infinity`` tokens, which most JSON parsers
+    reject — producing a hash over bytes no other verifier can reproduce,
+    silently breaking the tamper-evident chain.
+    """
     return json.dumps(
         payload,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
 
 
