@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from praetor import (
+from ephorate import (
     AnthropicMonitor,
     AsyncAnthropicMonitor,
     CallbackMetricSink,
@@ -75,7 +75,7 @@ async def test_async_monitor_records_error_and_reraises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_praetor_kwargs_scrubbed() -> None:
+async def test_async_ephorate_kwargs_scrubbed() -> None:
     events: list[MetricEvent] = []
     client = MagicMock()
     client.messages.create = AsyncMock(return_value=_response())
@@ -85,13 +85,13 @@ async def test_async_praetor_kwargs_scrubbed() -> None:
     await monitor.messages.create(
         model="claude-opus-4-7",
         messages=[],
-        praetor_session_id="sess-77",
-        praetor_metadata={"trace_id": "t"},
+        ephorate_session_id="sess-77",
+        ephorate_metadata={"trace_id": "t"},
     )
     assert events[0].session_id == "sess-77"
     forwarded = client.messages.create.call_args.kwargs
-    assert "praetor_session_id" not in forwarded
-    assert "praetor_metadata" not in forwarded
+    assert "ephorate_session_id" not in forwarded
+    assert "ephorate_metadata" not in forwarded
 
 
 # --------------------------------------------------------------- streaming sync

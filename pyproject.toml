@@ -1,7 +1,7 @@
 [project]
-name = "praetor-workspace"
+name = "ephorate-workspace"
 version = "0.0.0"
-description = "Praetor monorepo workspace root (not published)"
+description = "Ephorate monorepo workspace root (not published)"
 requires-python = ">=3.11"
 
 [tool.uv.workspace]

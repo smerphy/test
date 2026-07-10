@@ -3,7 +3,7 @@
 ## 1. Install
 
 ```bash
-pip install praetor anthropic
+pip install ephorate anthropic
 ```
 
 ## 2. Write a policy
@@ -44,11 +44,11 @@ policies:
 
 ```python
 from anthropic import Anthropic
-from praetor import PraetorClient, JsonlAuditSink
-from praetor.middleware.anthropic import gate_response
+from ephorate import EphorateClient, JsonlAuditSink
+from ephorate.middleware.anthropic import gate_response
 
 client = Anthropic()
-praetor = PraetorClient(
+ephorate = EphorateClient(
     bundle_path="policy.yaml",
     audit_sink=JsonlAuditSink("audit.jsonl"),
     default_agent_id="research-bot",
@@ -66,13 +66,13 @@ response = client.messages.create(
 # bundle. Allowed blocks pass through; transformed blocks have their
 # arguments rewritten; denied blocks are replaced with a sentinel input
 # so the model can re-plan on the next turn.
-gated = gate_response(response, client=praetor, session_id="demo-1")
+gated = gate_response(response, client=ephorate, session_id="demo-1")
 ```
 
 ## 4. Verify the audit chain
 
 ```bash
-python -c "from praetor import verify_chain; print(verify_chain('audit.jsonl'))"
+python -c "from ephorate import verify_chain; print(verify_chain('audit.jsonl'))"
 ```
 
 Prints the number of verified events. Raises `AuditError` on the first

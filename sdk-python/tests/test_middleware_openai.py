@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import AlwaysPredicate, EqPredicate
-from praetor_engine.types import Decision
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import AlwaysPredicate, EqPredicate
+from ephorate_engine.types import Decision
 
-from praetor.client import PraetorClient
-from praetor.middleware.openai import gate_tool_calls
+from ephorate.client import EphorateClient
+from ephorate.middleware.openai import gate_tool_calls
 
 
-def _client(*policies: Policy) -> PraetorClient:
-    return PraetorClient(policies=list(policies), default_agent_id="agent-1")
+def _client(*policies: Policy) -> EphorateClient:
+    return EphorateClient(policies=list(policies), default_agent_id="agent-1")
 
 
 def _tc(name: str, args: dict, cid: str = "call_1") -> dict:
@@ -72,7 +72,7 @@ class TestGateToolCalls:
             session_id="s",
         )
         decoded = json.loads(out[0]["function"]["arguments"])
-        assert decoded["__praetor_blocked__"] is True
+        assert decoded["__ephorate_blocked__"] is True
         assert decoded["policy_id"] == "deny"
 
     def test_malformed_json_arguments_fail_closed(self) -> None:
@@ -100,7 +100,7 @@ class TestGateToolCalls:
         import json as _json
 
         gated_args = _json.loads(out[0]["function"]["arguments"])
-        assert gated_args["__praetor_blocked__"] is True
+        assert gated_args["__ephorate_blocked__"] is True
         assert gated_args["decision"] == "deny"
 
     def test_missing_function_block_passes_through(self) -> None:

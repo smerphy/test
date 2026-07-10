@@ -1,4 +1,4 @@
-"""AI compliance posture: map Praetor controls to AI governance frameworks.
+"""AI compliance posture: map Ephorate controls to AI governance frameworks.
 
 Unlike the period-based evidence report (``app.services.report``), this is a
 *live posture assessment*: it snapshots the org's current control configuration
@@ -38,7 +38,7 @@ from app.models import (
 # --- signals ----------------------------------------------------------------
 # Human label + remediation for each signal a control can require. Platform
 # guarantees (audit trail, tamper-evident chain, kill-switch, human approval,
-# detection engine) are always present — Praetor provides them unconditionally.
+# detection engine) are always present — Ephorate provides them unconditionally.
 _SIGNAL_META: dict[str, tuple[str, str]] = {
     "policy_enforcement": (
         "Deterministic policy enforcement",

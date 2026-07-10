@@ -1,4 +1,5 @@
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { api, type Agent, type Quarantine } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -22,18 +23,14 @@ export default async function FleetPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Fleet</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Registered agent sensors and their health.
-        </p>
-      </header>
+      <PageHeader
+        title="Fleet"
+        description={
+          <>Registered agent sensors and their health.</>
+        }
+      />
 
-      {error && (
-        <Card title="Error">
-          <p className="text-sm text-red-400">{error}</p>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       <Card title={`${quarantines.length} active quarantines`}>
         {quarantines.length === 0 ? (

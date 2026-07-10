@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from praetor_engine.audit_hash import canonical_timestamp as _canonical_timestamp
-from praetor_engine.types import Decision
+from ephorate_engine.audit_hash import canonical_timestamp as _canonical_timestamp
+from ephorate_engine.types import Decision
 from pydantic import (
     BaseModel,
     ConfigDict,

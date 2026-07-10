@@ -15,15 +15,16 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models import ApprovalRequest, Organization
+from app.services._http import owned_client
 from app.services.egress import is_safe_webhook_url
 
 
 def build_approval_payload(approval: ApprovalRequest) -> dict[str, Any]:
     """A Slack-incoming-webhook-compatible payload (also fine for a generic
-    JSON webhook — the structured `praetor` block carries the raw fields)."""
+    JSON webhook — the structured `ephorate` block carries the raw fields)."""
     return {
         "text": (
-            f":lock: Praetor approval required for `{approval.tool_name}` "
+            f":lock: Ephorate approval required for `{approval.tool_name}` "
             f"(agent={approval.agent_id})"
         ),
         "blocks": [
@@ -60,7 +61,7 @@ def build_approval_payload(approval: ApprovalRequest) -> dict[str, Any]:
                 ],
             },
         ],
-        "praetor": {
+        "ephorate": {
             "approval_id": approval.id,
             "agent_id": approval.agent_id,
             "session_id": approval.session_id,
@@ -92,13 +93,13 @@ def deliver_approval_notification(
     # SSRF guard: re-check the webhook is not an internal address at send time.
     if not is_safe_webhook_url(org.approval_webhook_url):
         return False
-    client = http_client or httpx.Client(timeout=10.0)
     try:
-        r = client.post(
-            org.approval_webhook_url, json=build_approval_payload(approval)
-        )
-        r.raise_for_status()
-        return True
+        with owned_client(http_client, timeout=10.0) as client:
+            r = client.post(
+                org.approval_webhook_url, json=build_approval_payload(approval)
+            )
+            r.raise_for_status()
+            return True
     except Exception:
         return False
 

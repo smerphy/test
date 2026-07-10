@@ -6,15 +6,15 @@ import time
 import httpx
 import pytest
 import respx
-from praetor_engine.types import AgentInfo, PolicyInput, SessionInfo, ToolCall
+from ephorate_engine.types import AgentInfo, PolicyInput, SessionInfo, ToolCall
 
-from praetor.approval import (
+from ephorate.approval import (
     ApprovalRegistry,
     ApprovalRequest,
     ControlPlaneApprovalHandler,
     WebhookApprovalHandler,
 )
-from praetor.errors import ApprovalTimeout
+from ephorate.errors import ApprovalTimeout
 
 
 def _pi() -> PolicyInput:
@@ -37,7 +37,7 @@ class TestApprovalRequest:
             reason="needs human",
         )
         payload = req.to_slack_payload()
-        assert payload["praetor"]["approval_id"] == "abc"
+        assert payload["ephorate"]["approval_id"] == "abc"
         # First non-section block contains the buttons.
         action_block = next(b for b in payload["blocks"] if b["type"] == "actions")
         button_values = {el["value"] for el in action_block["elements"]}

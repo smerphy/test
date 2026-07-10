@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PraetorClient } from "../client.js";
+import { EphorateClient } from "../client.js";
 import type { Policy } from "../types.js";
 import { gateToolCalls } from "./openai.js";
 
 function client(policies: Policy[] = []) {
-  return new PraetorClient({ policies, defaultAgentId: "agent-1" });
+  return new EphorateClient({ policies, defaultAgentId: "agent-1" });
 }
 
 const tc = (name: string, args: Record<string, unknown>, id = "call_1") => ({
@@ -59,18 +59,30 @@ describe("OpenAI middleware", () => {
       sessionId: "s",
     });
     const payload = JSON.parse(out[0]!.function.arguments);
-    expect(payload.__praetor_blocked__).toBe(true);
+    expect(payload.__ephorate_blocked__).toBe(true);
     expect(payload.policy_id).toBe("d");
   });
 
-  it("malformed JSON arguments treated as empty", () => {
-    const call = { id: "x", type: "function" as const, function: { name: "http.get", arguments: "{not json" } };
+  it("fails CLOSED on malformed/non-object arguments (does not pass through)", () => {
+    const allowAll = () =>
+      client([{ id: "allow", effect: "allow", reason: "x", when: { op: "always" } }]);
+    for (const bad of ["{not json", "[1,2,3]", "42", '"str"']) {
+      const call = { id: "x", type: "function" as const, function: { name: "http.get", arguments: bad } };
+      const out = gateToolCalls([call], { client: allowAll(), sessionId: "s" });
+      const payload = JSON.parse(out[0]!.function.arguments);
+      expect(payload.__ephorate_blocked__).toBe(true); // denied despite allow-all
+      expect(payload.decision).toBe("deny");
+    }
+  });
+
+  it("absent/empty arguments evaluate as no-args and pass through on allow", () => {
+    const call = { id: "x", type: "function" as const, function: { name: "http.get", arguments: "" } };
     const out = gateToolCalls([call], {
       client: client([
         { id: "allow", effect: "allow", reason: "x", when: { op: "always" } },
       ]),
       sessionId: "s",
     });
-    expect(out[0]).toEqual(call); // unchanged on allow
+    expect(out[0]).toEqual(call);
   });
 });

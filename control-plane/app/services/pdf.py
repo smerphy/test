@@ -45,7 +45,7 @@ def render_report_pdf(report: ComplianceReport) -> bytes:
         rightMargin=0.75 * inch,
         topMargin=0.75 * inch,
         bottomMargin=0.75 * inch,
-        title=f"Praetor compliance report — {report.framework}",
+        title=f"Ephorate compliance report — {report.framework}",
     )
     styles = getSampleStyleSheet()
     story = []
@@ -109,10 +109,10 @@ def render_report_pdf(report: ComplianceReport) -> bytes:
     story.append(Spacer(1, 0.3 * inch))
     story.append(
         Paragraph(
-            "<i>This report is generated from Praetor audit events. Each "
+            "<i>This report is generated from Ephorate audit events. Each "
             "tool-call decision is recorded in a SHA-256 hash chain; the "
             "events backing this summary can be re-verified for continuity via "
-            "<font face='Courier'>praetor.verify_chain</font>.</i>",
+            "<font face='Courier'>ephorate.verify_chain</font>.</i>",
             styles["Normal"],
         )
     )

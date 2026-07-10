@@ -1,8 +1,8 @@
 import type { DecisionResult } from "./types.js";
 
-export class PraetorError extends Error {}
+export class EphorateError extends Error {}
 
-export class PolicyDenied extends PraetorError {
+export class PolicyDenied extends EphorateError {
   readonly decision: DecisionResult;
   constructor(decision: DecisionResult) {
     super(
@@ -13,14 +13,14 @@ export class PolicyDenied extends PraetorError {
   }
 }
 
-export class ApprovalTimeout extends PraetorError {
+export class ApprovalTimeout extends EphorateError {
   constructor(message: string) {
     super(message);
     this.name = "ApprovalTimeout";
   }
 }
 
-export class AuditError extends PraetorError {
+export class AuditError extends EphorateError {
   constructor(message: string) {
     super(message);
     this.name = "AuditError";

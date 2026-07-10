@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import AlwaysPredicate, EqPredicate
-from praetor_engine.types import Decision
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import AlwaysPredicate, EqPredicate
+from ephorate_engine.types import Decision
 
-from praetor.client import PraetorClient
-from praetor.middleware.anthropic import (
+from ephorate.client import EphorateClient
+from ephorate.middleware.anthropic import (
     gate_response,
     gate_tool_use_blocks,
 )
 
 
-def _client(*policies: Policy) -> PraetorClient:
-    return PraetorClient(policies=list(policies), default_agent_id="agent-1")
+def _client(*policies: Policy) -> EphorateClient:
+    return EphorateClient(policies=list(policies), default_agent_id="agent-1")
 
 
 def _tu(name: str, args: dict, bid: str = "toolu_1") -> dict:
@@ -66,7 +66,7 @@ class TestGateBlocks:
             ),
             session_id="s",
         )
-        assert out[0]["input"]["__praetor_blocked__"] is True
+        assert out[0]["input"]["__ephorate_blocked__"] is True
         assert out[0]["input"]["policy_id"] == "deny-http"
         assert out[0]["input"]["decision"] == "deny"
         # Tool name + id preserved so the model can correlate.
@@ -97,15 +97,15 @@ class TestGateBlocks:
             client=_client(),  # empty bundle
             session_id="s",
         )
-        assert out[0]["input"]["__praetor_blocked__"] is True
+        assert out[0]["input"]["__ephorate_blocked__"] is True
         assert out[0]["input"]["policy_id"] is None
 
     def test_malformed_blocks_fail_closed(self) -> None:
         # A tool_use block with no usable name must be denied, not passed
-        # through unevaluated (that would bypass Praetor entirely).
+        # through unevaluated (that would bypass Ephorate entirely).
         block = {"type": "tool_use", "id": "x"}
         out = gate_tool_use_blocks([block], client=_client(), session_id="s")
-        assert out[0]["input"]["__praetor_blocked__"] is True
+        assert out[0]["input"]["__ephorate_blocked__"] is True
         assert out[0]["input"]["decision"] == "deny"
 
 
@@ -136,7 +136,7 @@ class TestPydanticLikeBlocks:
         )
         gated = out[0]
         assert isinstance(gated, ToolUse)
-        assert gated.input["__praetor_blocked__"] is True
+        assert gated.input["__ephorate_blocked__"] is True
 
 
 class TestGateResponse:
@@ -165,4 +165,4 @@ class TestGateResponse:
             "type": "text",
             "text": "I'll fetch that for you.",
         }
-        assert out["content"][1]["input"]["__praetor_blocked__"] is True
+        assert out["content"][1]["input"]["__ephorate_blocked__"] is True

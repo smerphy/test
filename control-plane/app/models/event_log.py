@@ -64,6 +64,11 @@ class LogRecord(Base):
     __table_args__ = (
         # The consumer poll: WHERE topic = ? AND id > ? ORDER BY id.
         Index("ix_log_topic_id", "topic", "id"),
+        # Front the org FK with an index like every other org-scoped table.
+        # On Postgres an unindexed child FK forces a full sequential scan of
+        # this high-volume table to enforce ON DELETE CASCADE during an org
+        # purge.
+        Index("ix_log_records_org", "organization_id"),
     )
 
 

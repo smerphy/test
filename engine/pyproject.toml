@@ -1,10 +1,10 @@
 [project]
-name = "praetor-engine"
+name = "ephorate-engine"
 version = "0.1.0"
-description = "Praetor policy engine: declarative runtime policy evaluation for AI agents."
+description = "Ephorate policy engine: declarative runtime policy evaluation for AI agents."
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Praetor" }]
+authors = [{ name = "Ephorate" }]
 dependencies = [
     "pydantic>=2.6",
     "PyYAML>=6.0",
@@ -22,19 +22,19 @@ dev = [
 ]
 
 [project.scripts]
-praetor = "praetor_engine.cli:main"
-praetor-engine-schemas = "praetor_engine.schema:_main"
+ephorate = "ephorate_engine.cli:main"
+ephorate-engine-schemas = "ephorate_engine.schema:_main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["praetor_engine"]
-# `.praetor` is just YAML; hatchling needs to be told to ship it.
+packages = ["ephorate_engine"]
+# `.ephorate` is just YAML; hatchling needs to be told to ship it.
 artifacts = [
-    "praetor_engine/bundles/*.praetor",
-    "praetor_engine/py.typed",
+    "ephorate_engine/bundles/*.ephorate",
+    "ephorate_engine/py.typed",
 ]
 
 [tool.pytest.ini_options]
@@ -45,7 +45,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["praetor_engine"]
+source = ["ephorate_engine"]
 branch = true
 
 [tool.coverage.report]
@@ -58,7 +58,7 @@ exclude_lines = [
 [tool.mypy]
 strict = true
 python_version = "3.11"
-files = ["praetor_engine"]
+files = ["ephorate_engine"]
 
 [tool.ruff]
 line-length = 100

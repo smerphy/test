@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from praetor_engine.evaluator import Policy
-from praetor_engine.parser import PolicyParseError, parse_bundle, parse_bundle_file
-from praetor_engine.predicates import AndPredicate, EqPredicate
-from praetor_engine.types import Decision
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.parser import PolicyParseError, parse_bundle, parse_bundle_file
+from ephorate_engine.predicates import AndPredicate, EqPredicate
+from ephorate_engine.types import Decision
 
 GOOD_BUNDLE = """\
 policies:

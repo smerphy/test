@@ -56,7 +56,7 @@ def test_payload_is_ocsf_flavored(session: Session, org: Organization) -> None:
     assert ev["class_uid"] == 2004
     assert ev["severity_id"] == 5  # critical
     assert ev["finding_info"]["uid"] == f.id
-    assert ev["praetor"]["atlas_technique"] == "AML.T0024"
+    assert ev["ephorate"]["atlas_technique"] == "AML.T0024"
     assert ev["metadata"]["org_slug"] == org.slug
 
 

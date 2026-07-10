@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PraetorClient } from "../client.js";
+import { EphorateClient } from "../client.js";
 import type { Policy } from "../types.js";
 import { gateResponse, gateToolUseBlocks } from "./anthropic.js";
 
 function client(policies: Policy[] = []) {
-  return new PraetorClient({ policies, defaultAgentId: "agent-1" });
+  return new EphorateClient({ policies, defaultAgentId: "agent-1" });
 }
 
 const tuBlock = (
@@ -23,6 +23,26 @@ describe("Anthropic middleware", () => {
       sessionId: "s",
     });
     expect(out).toEqual(blocks);
+  });
+
+  it("fails CLOSED when name/input is missing or non-object", () => {
+    const allowAll = () =>
+      client([{ id: "p", effect: "allow", reason: "x", when: { op: "always" } }]);
+    const bad = [
+      { type: "tool_use" as const, id: "t", name: "http.get", input: ["x"] },
+      { type: "tool_use" as const, id: "t", name: "http.get", input: "str" },
+      { type: "tool_use" as const, id: "t", name: 123, input: { url: "x" } },
+      { type: "tool_use" as const, id: "t", name: "http.get" }, // input absent
+    ];
+    for (const block of bad) {
+      const out = gateToolUseBlocks([block as never], {
+        client: allowAll(),
+        sessionId: "s",
+      });
+      const first = out[0] as { input: Record<string, unknown> };
+      expect(first.input.__ephorate_blocked__).toBe(true); // denied despite allow-all
+      expect(first.input.decision).toBe("deny");
+    }
   });
 
   it("ALLOW passes block unchanged", () => {
@@ -75,7 +95,7 @@ describe("Anthropic middleware", () => {
       sessionId: "s",
     });
     const gated = out[0] as typeof block;
-    expect(gated.input.__praetor_blocked__).toBe(true);
+    expect(gated.input.__ephorate_blocked__).toBe(true);
     expect(gated.input.policy_id).toBe("deny");
     expect(gated.name).toBe("http.get");
   });
@@ -83,7 +103,7 @@ describe("Anthropic middleware", () => {
   it("default-deny with no matching policy", () => {
     const block = tuBlock("http.get", { url: "https://x" });
     const out = gateToolUseBlocks([block], { client: client(), sessionId: "s" });
-    expect((out[0] as typeof block).input.__praetor_blocked__).toBe(true);
+    expect((out[0] as typeof block).input.__ephorate_blocked__).toBe(true);
   });
 
   it("gateResponse round-trips a message-like object", () => {
@@ -99,6 +119,6 @@ describe("Anthropic middleware", () => {
     });
     expect(out.id).toBe("msg_1");
     const blocked = out.content[1] as { input: Record<string, unknown> };
-    expect(blocked.input.__praetor_blocked__).toBe(true);
+    expect(blocked.input.__ephorate_blocked__).toBe(true);
   });
 });

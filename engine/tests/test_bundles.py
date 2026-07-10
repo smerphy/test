@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from praetor_engine.bundles import (
+from ephorate_engine.bundles import (
     BUNDLES,
     bundle_path,
     list_bundles,
@@ -56,8 +56,8 @@ class TestEuAiActHumanOverride:
 
     @pytest.mark.parametrize("force", [True, 1, "true", "TRUE", "yes", "1"])
     def test_human_override_flag_denied(self, force: object) -> None:
-        from praetor_engine.evaluator import Evaluator
-        from praetor_engine.types import (
+        from ephorate_engine.evaluator import Evaluator
+        from ephorate_engine.types import (
             AgentInfo,
             Decision,
             PolicyInput,
@@ -78,8 +78,8 @@ class TestEuAiActHumanOverride:
 
     @pytest.mark.parametrize("force", [False, 0, "false", "no", ""])
     def test_non_override_values_not_denied_by_flag_rule(self, force: object) -> None:
-        from praetor_engine.evaluator import Evaluator
-        from praetor_engine.types import (
+        from ephorate_engine.evaluator import Evaluator
+        from ephorate_engine.types import (
             AgentInfo,
             PolicyInput,
             SessionInfo,

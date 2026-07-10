@@ -1,15 +1,15 @@
 /**
- * Typed client for the Praetor control plane HTTP API.
+ * Typed client for the Ephorate control plane HTTP API.
  *
- * Reads `PRAETOR_CONTROL_PLANE_URL` and `PRAETOR_API_KEY` from the
- * environment. The org slug is sourced from `PRAETOR_ORG_SLUG` (single-
+ * Reads `EPHORATE_CONTROL_PLANE_URL` and `EPHORATE_API_KEY` from the
+ * environment. The org slug is sourced from `EPHORATE_ORG_SLUG` (single-
  * tenant MVP); multi-tenancy will switch to a session-derived value.
  */
 
 const BASE_URL =
-  process.env.PRAETOR_CONTROL_PLANE_URL ?? "http://localhost:8000";
-const API_KEY = process.env.PRAETOR_API_KEY ?? "";
-const ORG_SLUG = process.env.PRAETOR_ORG_SLUG ?? "acme";
+  process.env.EPHORATE_CONTROL_PLANE_URL ?? "http://localhost:8000";
+const API_KEY = process.env.EPHORATE_API_KEY ?? "";
+const ORG_SLUG = process.env.EPHORATE_ORG_SLUG ?? "acme";
 
 export interface Project {
   id: string;
@@ -122,12 +122,29 @@ async function call<T>(
   return (await res.json()) as T;
 }
 
+/** Append defined, non-empty params to a path as a query string. */
+function withQuery(
+  path: string,
+  params: Record<string, string | undefined>
+): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") qs.set(k, v);
+  }
+  const s = qs.toString();
+  return s ? `${path}?${s}` : path;
+}
+
 export const api = {
   listProjects: () => call<Project[]>("/projects"),
   listBundles: (projectId: string) =>
     call<PolicyBundle[]>(`/projects/${projectId}/bundles`),
   listVersions: (bundleId: string) =>
     call<PolicyVersionSummary[]>(`/bundles/${bundleId}/versions`),
+  // Full versions (with yaml_text) in one call — avoids an N+1 of getVersion
+  // per version when rendering the whole history.
+  listVersionsFull: (bundleId: string) =>
+    call<PolicyVersion[]>(`/bundles/${bundleId}/versions/full`),
   getVersion: (versionId: string) =>
     call<PolicyVersion>(`/versions/${versionId}`),
   createVersion: (bundleId: string, body: { yaml_text: string; notes?: string }) =>
@@ -141,16 +158,8 @@ export const api = {
     until?: string;
     limit?: number;
   }) => call<BacktestReport>("/policies/backtest", { method: "POST", body }),
-  searchAudit: (params: Record<string, string | undefined>) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/audit/events?${qs.toString()}`
-      : "/audit/events";
-    return call<AuditEvent[]>(path);
-  },
+  searchAudit: (params: Record<string, string | undefined>) =>
+    call<AuditEvent[]>(withQuery("/audit/events", params)),
   listApprovals: (status: ApprovalRequest["status"] = "pending") =>
     call<ApprovalRequest[]>(`/approvals?status=${status}`),
   resolveApproval: (id: string, approved: boolean, resolved_by?: string) =>
@@ -166,16 +175,8 @@ export const api = {
   }) =>
     call<ComplianceReport>("/reports/compliance", { method: "POST", body }),
 
-  aggregateMetrics: (params: Record<string, string | undefined>) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/metrics/aggregate?${qs.toString()}`
-      : "/metrics/aggregate";
-    return call<MetricAggregateResponse>(path);
-  },
+  aggregateMetrics: (params: Record<string, string | undefined>) =>
+    call<MetricAggregateResponse>(withQuery("/metrics/aggregate", params)),
   listAlertRules: () => call<AlertRule[]>("/alerts/rules"),
   createAlertRule: (body: Partial<AlertRule>) =>
     call<AlertRule>("/alerts/rules", { method: "POST", body }),
@@ -191,14 +192,8 @@ export const api = {
 
   // SIEM / EDR
   getOverview: () => call<SecurityOverview>("/overview"),
-  listFindings: (params: Record<string, string | undefined> = {}) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString() ? `/findings?${qs.toString()}` : "/findings";
-    return call<Finding[]>(path);
-  },
+  listFindings: (params: Record<string, string | undefined> = {}) =>
+    call<Finding[]>(withQuery("/findings", params)),
   updateFinding: (id: string, body: Partial<{ status: string; assignee: string; note: string; resolved_by: string }>) =>
     call<Finding>(`/findings/${id}`, { method: "PATCH", body }),
   sweepFindings: () =>
@@ -239,16 +234,8 @@ export const api = {
   getTelemetryStats: () => call<TelemetryStats>("/telemetry/stats"),
 
   // FinOps / financial tracking
-  getCostSummary: (params: Record<string, string | undefined> = {}) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/finance/summary?${qs.toString()}`
-      : "/finance/summary";
-    return call<CostSummary>(path);
-  },
+  getCostSummary: (params: Record<string, string | undefined> = {}) =>
+    call<CostSummary>(withQuery("/finance/summary", params)),
   getBudgetStatus: () => call<BudgetStatus>("/finance/budget"),
   setCostBudget: (monthly_cost_budget_usd: number | null) =>
     call<{ monthly_cost_budget_usd: number | null }>("/org", {
@@ -267,16 +254,8 @@ export const api = {
   }) => call<ThreatFeed>("/threat/feeds", { method: "POST", body }),
   syncFeed: (id: string) =>
     call<FeedSyncResult>(`/threat/feeds/${id}/sync`, { method: "POST" }),
-  listIndicators: (params: Record<string, string | undefined> = {}) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") qs.set(k, v);
-    }
-    const path = qs.toString()
-      ? `/threat/indicators?${qs.toString()}`
-      : "/threat/indicators";
-    return call<ThreatIndicator[]>(path);
-  },
+  listIndicators: (params: Record<string, string | undefined> = {}) =>
+    call<ThreatIndicator[]>(withQuery("/threat/indicators", params)),
   createIndicator: (body: {
     type: string;
     value: string;
@@ -284,7 +263,127 @@ export const api = {
     confidence?: number;
     description?: string;
   }) => call<ThreatIndicator>("/threat/indicators", { method: "POST", body }),
+
+  // --- Kill-switch (EDR emergency stop) -------------------------------------
+  getKillSwitch: () => call<KillSwitchStatus>("/killswitch"),
+  engageKillSwitch: () =>
+    call<KillSwitchStatus>("/killswitch/engage", { method: "POST" }),
+  releaseKillSwitch: () =>
+    call<KillSwitchStatus>("/killswitch/release", { method: "POST" }),
+  grantBreakGlass: (body: {
+    agent_id: string;
+    reason: string;
+    minutes?: number;
+  }) => call<KillSwitchStatus>("/killswitch/break-glass", {
+    method: "POST",
+    body,
+  }),
+
+  // --- Compliance posture ---------------------------------------------------
+  getPostureOverview: () => call<PostureOverview>("/compliance/posture"),
+  getPosture: (framework: string) =>
+    call<FrameworkPosture>(`/compliance/posture/${framework}`),
+
+  // --- SOAR response playbooks ----------------------------------------------
+  listPlaybooks: () => call<Playbook[]>("/soar/playbooks"),
+  createPlaybook: (body: {
+    name: string;
+    description?: string;
+    priority?: number;
+    stop_on_match?: boolean;
+    conditions?: Record<string, unknown>;
+    actions?: { type: string; params?: Record<string, unknown> }[];
+  }) => call<Playbook>("/soar/playbooks", { method: "POST", body }),
+  setPlaybookEnabled: (id: string, enabled: boolean) =>
+    call<Playbook>(`/soar/playbooks/${id}`, {
+      method: "PATCH",
+      body: { enabled },
+    }),
+  listPlaybookExecutions: (limit = 50) =>
+    call<PlaybookExecution[]>(`/soar/executions?limit=${limit}`),
 };
+
+// --- Kill-switch ------------------------------------------------------------
+export interface BreakGlassGrant {
+  id: string;
+  agent_id: string;
+  reason: string;
+  granted_by: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface KillSwitchStatus {
+  halt_all: boolean;
+  active_break_glass: BreakGlassGrant[];
+}
+
+// --- Compliance posture -----------------------------------------------------
+export interface PostureFrameworkSummary {
+  framework: string;
+  title: string;
+  coverage: number;
+  controls_total: number;
+  controls_satisfied: number;
+  controls_partial: number;
+  controls_gap: number;
+}
+
+export interface PostureOverview {
+  generated_at: string;
+  open_critical_findings: number;
+  frameworks: PostureFrameworkSummary[];
+}
+
+export type ControlStatus = "satisfied" | "partial" | "gap";
+
+export interface PostureControl {
+  id: string;
+  title: string;
+  description: string;
+  status: ControlStatus;
+  present_signals: string[];
+  missing_signals: string[];
+  remediation: string[];
+}
+
+export interface FrameworkPosture extends PostureFrameworkSummary {
+  generated_at: string;
+  open_critical_findings: number;
+  controls: PostureControl[];
+}
+
+// --- SOAR response playbooks ------------------------------------------------
+export interface PlaybookAction {
+  type: string;
+  params?: Record<string, unknown>;
+}
+
+export interface Playbook {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  priority: number;
+  stop_on_match: boolean;
+  conditions: Record<string, unknown>;
+  actions: PlaybookAction[];
+  created_at: string;
+}
+
+export interface PlaybookActionResult {
+  type: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface PlaybookExecution {
+  id: string;
+  playbook_id: string;
+  finding_id: string;
+  results: PlaybookActionResult[];
+  created_at: string;
+}
 
 export interface BacktestExample {
   event_id: string;
@@ -412,7 +511,13 @@ export type IndicatorType =
   | "prompt_signature"
   | "regex";
 
-export type FeedFormat = "json" | "csv" | "plaintext" | "stix" | "misp";
+export type FeedFormat =
+  | "json"
+  | "csv"
+  | "plaintext"
+  | "stix"
+  | "misp"
+  | "taxii";
 
 export interface ThreatFeed {
   id: string;

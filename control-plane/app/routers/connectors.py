@@ -144,7 +144,7 @@ def test_connector(
     sample = Finding(
         organization_id=org.id,
         rule_id="connector-test",
-        title="Praetor connector test",
+        title="Ephorate connector test",
         severity=FindingSeverity.CRITICAL,
         category="anomaly",
         dedup_key="connector-test",

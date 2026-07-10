@@ -1,6 +1,6 @@
 # Security policy
 
-Praetor is a security-relevant product — its job is to gate AI agent
+Ephorate is a security-relevant product — its job is to gate AI agent
 behavior, log decisions tamper-evidently, and back compliance claims.
 Vulnerabilities here have real downstream impact. We take reports
 seriously.
@@ -13,7 +13,7 @@ Please report via one of:
 
 1. **GitHub Security Advisories** — preferred. Open a private advisory
    on this repository (Security → Advisories → "Report a vulnerability").
-2. **Email**: `security@praetor.dev` *(set up before public launch)*.
+2. **Email**: `security@ephorate.dev` *(set up before public launch)*.
    PGP key fingerprint published here at first release.
 
 Include:
@@ -21,7 +21,7 @@ Include:
 - A description of the issue and the component (engine / SDK / control
   plane / web).
 - Steps to reproduce, or a minimal proof-of-concept.
-- Praetor version (`pip show praetor-engine`, `pnpm list @praetor/sdk`,
+- Ephorate version (`pip show ephorate-engine`, `pnpm list @ephorate/sdk`,
   or commit SHA).
 - Your assessment of impact.
 
@@ -59,7 +59,7 @@ Include:
   bundle (the bundle is the trust boundary).
 - DoS via expensive regex in user-authored policies (we recommend
   reviewing policies as code).
-- Findings that require disabling Praetor's own enforcement.
+- Findings that require disabling Ephorate's own enforcement.
 
 ## Supported versions
 

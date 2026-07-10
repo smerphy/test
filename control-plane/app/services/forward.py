@@ -2,7 +2,7 @@
 
 When a new finding at or above the org's `finding_min_severity` is raised,
 it is POSTed to the org's `finding_webhook_url` as a normalized JSON event
-(OCSF-flavored) so Praetor plugs into existing security stacks (Splunk HEC,
+(OCSF-flavored) so Ephorate plugs into existing security stacks (Splunk HEC,
 Sentinel, Elastic, a SOAR runbook, or Slack). Delivery is best-effort and
 egress-guarded (no SSRF to internal addresses).
 """
@@ -15,6 +15,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models import Finding, FindingSeverity, Organization
+from app.services._http import owned_client
 from app.services.egress import is_safe_webhook_url
 
 # Ordering for the min-severity threshold.
@@ -56,11 +57,11 @@ def build_finding_event(finding: Finding, org: Organization) -> dict[str, Any]:
             "types": [str(finding.category)],
         },
         "metadata": {
-            "product": {"name": "Praetor", "vendor_name": "Praetor"},
+            "product": {"name": "Ephorate", "vendor_name": "Ephorate"},
             "org_id": org.id,
             "org_slug": org.slug,
         },
-        "praetor": {
+        "ephorate": {
             "rule_id": finding.rule_id,
             "category": str(finding.category),
             "agent_id": finding.agent_id,
@@ -91,13 +92,13 @@ def forward_finding(
         return False
     if not is_safe_webhook_url(org.finding_webhook_url):
         return False
-    client = http_client or httpx.Client(timeout=10.0)
     try:
-        r = client.post(
-            org.finding_webhook_url, json=build_finding_event(finding, org)
-        )
-        r.raise_for_status()
-        return True
+        with owned_client(http_client, timeout=10.0) as client:
+            r = client.post(
+                org.finding_webhook_url, json=build_finding_event(finding, org)
+            )
+            r.raise_for_status()
+            return True
     except Exception:
         return False
 

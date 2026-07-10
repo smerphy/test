@@ -4,7 +4,7 @@ Two producers feed one pipeline:
 
 * **report_observation** — an agent (or any AI) flags something it noticed,
   even incidentally (`POST /findings/report`).
-* **run_ai_sweep** — Praetor's AI proactively hunts over recent activity and
+* **run_ai_sweep** — Ephorate's AI proactively hunts over recent activity and
   surfaces findings nobody asked for (scheduled).
 
 Both are scored by the multi-agent triage panel (severity / impact / fidelity),

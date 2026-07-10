@@ -74,7 +74,7 @@ class FindingSource(StrEnum):
 
     DETECTION_ENGINE = "detection_engine"
     AGENT_REPORT = "agent_report"  # an agent flagged it opportunistically
-    AI_SWEEP = "ai_sweep"  # Praetor's AI surfaced it unprompted
+    AI_SWEEP = "ai_sweep"  # Ephorate's AI surfaced it unprompted
 
 
 # Statuses in which a finding is still "live" and should be updated in place

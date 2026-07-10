@@ -8,26 +8,42 @@ from typing import Any
 
 import pytest
 
-from praetor_mcp.auth import BearerAuthMiddleware
-from praetor_mcp.config import load_config, parse_config
-from praetor_mcp.identity import Identity, current_identity, set_identity
+from ephorate_mcp.auth import BearerAuthMiddleware
+from ephorate_mcp.config import load_config, parse_config
+from ephorate_mcp.identity import Identity, current_identity, set_identity
 
 
 # --- #3 env-var expansion ---------------------------------------------------
 def test_config_expands_env_vars(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MY_TOKEN", "s3cr3t")
     monkeypatch.setenv("MY_URL", "https://cp.example")
-    cfg_path = tmp_path / "praetor-mcp.yaml"
+    cfg_path = tmp_path / "ephorate-mcp.yaml"
+    # Env refs are expanded after the YAML is parsed, so use block style (or
+    # quote them in flow style) — `${VAR}` is not a bare YAML flow scalar.
     cfg_path.write_text(
-        "control_plane: { url: ${MY_URL}, api_key: ${MY_TOKEN} }\n"
+        "control_plane:\n  url: ${MY_URL}\n  api_key: ${MY_TOKEN}\n"
         "upstreams:\n"
         "  - name: gh\n    transport: stdio\n    command: [srv]\n"
-        "    env: { TOKEN: ${MY_TOKEN} }\n"
+        "    env:\n      TOKEN: ${MY_TOKEN}\n"
     )
     cfg = load_config(cfg_path)
     assert cfg.api_key == "s3cr3t"
     assert cfg.control_plane_url == "https://cp.example"
     assert cfg.upstreams[0].env["TOKEN"] == "s3cr3t"
+
+
+def test_env_value_cannot_inject_yaml_structure(monkeypatch, tmp_path: Path) -> None:
+    # An env var whose value contains YAML syntax must become a scalar string,
+    # not extra config structure (expansion happens after parsing).
+    monkeypatch.setenv("EVIL", "real\nadmin_backdoor: true")
+    cfg_path = tmp_path / "evil.yaml"
+    cfg_path.write_text(
+        "agent:\n  id: ${EVIL}\n"
+        "upstreams:\n  - name: x\n    transport: stdio\n    command: [a]\n"
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.agent_id == "real\nadmin_backdoor: true"  # inert scalar
+    assert not hasattr(cfg, "admin_backdoor")
 
 
 def test_undefined_env_var_left_intact(tmp_path: Path) -> None:
@@ -139,7 +155,7 @@ async def test_auth_session_falls_back_to_agent() -> None:
 # --- #1 gate uses the per-request identity ----------------------------------
 def test_proxy_uses_contextvar_identity() -> None:
     pytest.importorskip("mcp")
-    from praetor_mcp.server import ProxyServer
+    from ephorate_mcp.server import ProxyServer
 
     proxy = ProxyServer(
         parse_config(
@@ -162,7 +178,7 @@ def test_proxy_uses_contextvar_identity() -> None:
 
 # --- #4 health + graceful drain ---------------------------------------------
 def _app_for_health() -> Any:
-    from praetor_mcp.server import build_asgi_app
+    from ephorate_mcp.server import build_asgi_app
 
     return build_asgi_app(
         parse_config(
@@ -189,7 +205,7 @@ async def test_readyz_starting_before_upstreams() -> None:
 
 
 def test_gate_close_flushes_client() -> None:
-    from praetor_mcp.gate import PolicyGate
+    from ephorate_mcp.gate import PolicyGate
 
     calls: list[str] = []
 

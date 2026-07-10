@@ -1,7 +1,7 @@
 """12-factor configuration via pydantic-settings.
 
 All settings are sourced from environment variables prefixed with
-`PRAETOR_`. A `.env` file in the working directory is loaded if present.
+`EPHORATE_`. A `.env` file in the working directory is loaded if present.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ DEFAULT_SESSION_SECRET = "dev-only-replace-me"
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="PRAETOR_",
+        env_prefix="EPHORATE_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
@@ -34,12 +34,12 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite+pysqlite:///:memory:")
 
     # MVP auth: caller passes one of these keys in `X-API-Key`.
-    # Set via `PRAETOR_API_KEYS=key1,key2` (comma-separated).
+    # Set via `EPHORATE_API_KEYS=key1,key2` (comma-separated).
     api_keys: list[str] = Field(default_factory=list)
 
     # Per-key organization binding: maps an API key to the slug of the
     # single organization it is authorized for. Set via
-    # `PRAETOR_API_KEY_ORGS='{"key1": "acme"}'`. When a key is bound here,
+    # `EPHORATE_API_KEY_ORGS='{"key1": "acme"}'`. When a key is bound here,
     # it can only ever resolve to that organization — a mismatched
     # `X-Org-Slug` header is rejected rather than honored. This is what
     # closes cross-tenant access for API-key traffic; keys left unbound are
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     api_key_orgs: dict[str, str] = Field(default_factory=dict)
 
     # Per-key RBAC role. Maps an API key to one of viewer/analyst/admin/owner,
-    # set via `PRAETOR_API_KEY_ROLES='{"ingest-key": "analyst"}'`. Keys not
+    # set via `EPHORATE_API_KEY_ROLES='{"ingest-key": "analyst"}'`. Keys not
     # listed fall back to `api_key_default_role`. This lets you mint read-only
     # keys (SIEM pulls, dashboards) and least-privilege sensor keys while
     # reserving config changes for admin keys.
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
 
     # SCIM 2.0 provisioning: bearer token → org slug. An IdP (Okta/Azure AD)
     # calls /scim/v2/Users with `Authorization: Bearer <token>`. Set via
-    # `PRAETOR_SCIM_TOKENS='{"tok": "acme"}'`. Unset = SCIM disabled (401).
+    # `EPHORATE_SCIM_TOKENS='{"tok": "acme"}'`. Unset = SCIM disabled (401).
     scim_tokens: dict[str, str] = Field(default_factory=dict)
 
     structured_logs: bool = Field(default=True)
@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     log_backend: str = Field(default="sql")
     # Kafka/Redpanda bootstrap servers (only used when log_backend="kafka").
     kafka_bootstrap_servers: str = Field(default="")
-    kafka_topic_prefix: str = Field(default="praetor.")
+    kafka_topic_prefix: str = Field(default="ephorate.")
     # Analytics (columnar) sink for the analytics consumer: "none" (default),
     # "ndjson" (reuse the cold archive), or "clickhouse".
     analytics_sink: str = Field(default="none")
@@ -139,7 +139,7 @@ class Settings(BaseSettings):
     audit_retention_days: int | None = Field(default=None)
     # Classification-aware retention: per-classification override windows (days)
     # keyed by the event's data classification, e.g.
-    # `PRAETOR_AUDIT_RETENTION_DAYS_BY_CLASS='{"restricted": 30}'` purges
+    # `EPHORATE_AUDIT_RETENTION_DAYS_BY_CLASS='{"restricted": 30}'` purges
     # PII-bearing ("restricted") events after 30 days regardless of the default
     # window above. Classifications not listed fall back to `audit_retention_days`.
     audit_retention_days_by_class: dict[str, int] = Field(default_factory=dict)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from praetor_mcp.__main__ import main
+from ephorate_mcp.__main__ import main
 
 _CONFIG = {
     "agent": {"id": "a"},
@@ -17,7 +17,7 @@ _CONFIG = {
 
 
 def test_cli_check_ok(tmp_path: Path, capsys) -> None:
-    cfg = tmp_path / "praetor-mcp.yaml"
+    cfg = tmp_path / "ephorate-mcp.yaml"
     cfg.write_text(yaml.safe_dump(_CONFIG))
     assert main(["--check", "-c", str(cfg)]) == 0
     assert "1 upstream" in capsys.readouterr().out

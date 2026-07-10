@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from ephorate_engine.audit_hash import compute_hash as _canonical_hash
 from fastapi.testclient import TestClient
-from praetor_engine.audit_hash import compute_hash as _canonical_hash
 
 from app.schemas import AuditEventIn
 

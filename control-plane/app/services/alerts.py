@@ -282,7 +282,7 @@ def _route(
                     "routing_key": rule.target,
                     "event_action": "trigger",
                     "payload": payload["pagerduty"],
-                    "dedup_key": f"praetor:{rule.id}:{event.group_key or 'all'}",
+                    "dedup_key": f"ephorate:{rule.id}:{event.group_key or 'all'}",
                 },
             )
             r.raise_for_status()
@@ -355,7 +355,7 @@ def _build_payload(event: AlertEvent, rule: AlertRule) -> dict[str, Any]:
                 {
                     "type": "context",
                     "elements": [
-                        {"type": "mrkdwn", "text": f"praetor alert · `{rule.id}`"}
+                        {"type": "mrkdwn", "text": f"ephorate alert · `{rule.id}`"}
                     ],
                 },
             ],
@@ -363,7 +363,7 @@ def _build_payload(event: AlertEvent, rule: AlertRule) -> dict[str, Any]:
         "pagerduty": {
             "summary": f"{title} — {detail_lines[2]}",
             "severity": severity if severity in ("warning", "critical") else "info",
-            "source": "praetor",
+            "source": "ephorate",
             "custom_details": raw,
         },
     }

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from praetor_engine.types import (
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     DecisionResult,
@@ -189,13 +189,13 @@ class TestJsonSchemaExport:
         }
 
     def test_export_helper_returns_all_public_types(self) -> None:
-        from praetor_engine.schema import export_schemas
+        from ephorate_engine.schema import export_schemas
 
         schemas = export_schemas()
         assert set(schemas) == {"PolicyInput", "DecisionResult", "Policy"}
 
     def test_exported_schemas_pin_dialect(self) -> None:
-        from praetor_engine.schema import JSON_SCHEMA_DIALECT, export_schemas
+        from ephorate_engine.schema import JSON_SCHEMA_DIALECT, export_schemas
 
         for schema in export_schemas().values():
             assert schema["$schema"] == JSON_SCHEMA_DIALECT
@@ -203,7 +203,7 @@ class TestJsonSchemaExport:
     def test_write_schemas_emits_files(self, tmp_path: object) -> None:
         from pathlib import Path
 
-        from praetor_engine.schema import write_schemas
+        from ephorate_engine.schema import write_schemas
 
         assert isinstance(tmp_path, Path)
         written = write_schemas(tmp_path)

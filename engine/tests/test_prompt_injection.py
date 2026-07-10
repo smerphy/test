@@ -11,9 +11,9 @@ from typing import Any
 
 import pytest
 
-from praetor_engine.bundles import load_bundle
-from praetor_engine.evaluator import Evaluator
-from praetor_engine.types import (
+from ephorate_engine.bundles import load_bundle
+from ephorate_engine.evaluator import Evaluator
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     PolicyInput,

@@ -2,8 +2,11 @@
 denies its tool calls. Analysts create/lift manually; the detection engine
 creates them automatically for CRITICAL findings (when auto-response is on).
 
-`GET /quarantines/active` is the endpoint the SDK polls to enforce the
-kill-switch inline.
+`GET /quarantines/check` is the authoritative enforcement surface the SDK
+polls: it composes the global kill-switch, hard spend enforcement, and
+per-entity quarantines. `GET /quarantines/active` only lists per-entity
+quarantine rows (for dashboards) and does NOT reflect the kill-switch or
+spend guard.
 """
 
 from __future__ import annotations
@@ -74,8 +77,9 @@ def list_active(
     org: Organization = Depends(current_org),
     session: Session = Depends(get_session),
 ) -> list[Quarantine]:
-    """Active quarantines for this org — polled by the SDK to enforce the
-    kill-switch inline before evaluating policy."""
+    """Active per-entity quarantines for this org (dashboard view). This does
+    NOT include the global kill-switch or spend-guard blocks — the SDK enforces
+    those inline via GET /quarantines/check, not this list."""
     return active_quarantines(session, org.id)
 
 

@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from ephorate_engine.audit_hash import compute_hash as _canonical_hash
+from ephorate_engine.parser import PolicyParseError
 from fastapi.testclient import TestClient
-from praetor_engine.audit_hash import compute_hash as _canonical_hash
-from praetor_engine.parser import PolicyParseError
 from sqlalchemy.orm import Session
 
 from app.models import Organization

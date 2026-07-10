@@ -4,7 +4,7 @@ Tenant secrets — ``organizations.ai_api_key`` and ``threat_feeds.auth_header``
 — are Fernet-encrypted before they touch the database and decrypted only at
 the moment of use. A DB dump therefore leaks ciphertext, not keys.
 
-Key rotation is supported via ``MultiFernet``: set ``PRAETOR_SECRET_KEYS`` to a
+Key rotation is supported via ``MultiFernet``: set ``EPHORATE_SECRET_KEYS`` to a
 comma-separated list; the FIRST key encrypts new values, and ALL keys are
 tried on decrypt. To rotate, prepend a fresh key — old ciphertext still
 decrypts and is re-sealed with the new key on its next write.
@@ -42,7 +42,7 @@ def _get_cipher() -> MultiFernet | None:
                 _cipher = MultiFernet([Fernet(k.encode()) for k in keys])
             except (ValueError, TypeError) as exc:
                 raise SecretsError(
-                    "PRAETOR_SECRET_KEYS contains an invalid Fernet key"
+                    "EPHORATE_SECRET_KEYS contains an invalid Fernet key"
                 ) from exc
         else:
             _cipher = None
@@ -80,7 +80,7 @@ def unseal(value: str | None) -> str | None:
     cipher = _get_cipher()
     if cipher is None:
         raise SecretsError(
-            "a sealed secret was found but PRAETOR_SECRET_KEYS is not configured"
+            "a sealed secret was found but EPHORATE_SECRET_KEYS is not configured"
         )
     try:
         return cipher.decrypt(value[len(_PREFIX) :].encode()).decode()

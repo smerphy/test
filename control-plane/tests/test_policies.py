@@ -56,6 +56,12 @@ def test_bundle_and_version_lifecycle(client: TestClient) -> None:
 
     versions = client.get(f"/bundles/{bid}/versions").json()
     assert [v["version_number"] for v in versions] == [1, 2]
+    # The summary list omits yaml_text; the /full variant includes it in one
+    # call (no per-version N+1).
+    assert "yaml_text" not in versions[0]
+    full = client.get(f"/bundles/{bid}/versions/full").json()
+    assert [v["version_number"] for v in full] == [1, 2]
+    assert all(v["yaml_text"] == _GOOD_YAML for v in full)
 
 
 def test_invalid_yaml_rejected_with_422(client: TestClient) -> None:

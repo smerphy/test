@@ -59,13 +59,13 @@ def create_app() -> FastAPI:
     # signs browser auth cookies, so the built-in placeholder must never ship.
     if not settings.dev_mode and settings.session_secret == _DEFAULT_SESSION_SECRET:
         raise RuntimeError(
-            "PRAETOR_SESSION_SECRET must be set to a strong random value "
-            "(the built-in default signs auth cookies). Set PRAETOR_DEV_MODE=true "
+            "EPHORATE_SESSION_SECRET must be set to a strong random value "
+            "(the built-in default signs auth cookies). Set EPHORATE_DEV_MODE=true "
             "only for local development."
         )
 
     app = FastAPI(
-        title="Praetor Control Plane",
+        title="Ephorate Control Plane",
         version=__version__,
         description="Policy authoring, audit storage, approvals, compliance reports.",
     )

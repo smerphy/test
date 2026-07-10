@@ -18,8 +18,8 @@ def test_celery_app_eager_in_tests() -> None:
 
 def test_celery_tasks_are_registered() -> None:
     registered = set(celery_app.tasks.keys())
-    assert "praetor.audit.process_batch" in registered
-    assert "praetor.reports.generate" in registered
+    assert "ephorate.audit.process_batch" in registered
+    assert "ephorate.reports.generate" in registered
 
 
 def test_generate_report_task_runs_via_delay(
@@ -83,7 +83,7 @@ def test_process_audit_batch_task_counts_accepted_and_rejected(
         hash="0" * 64,
     )
     # Compute correct hash via the shared canonical helper.
-    from praetor_engine.audit_hash import compute_hash
+    from ephorate_engine.audit_hash import compute_hash
 
     body = good.model_dump(mode="json", exclude={"hash"})
     good_dict = good.model_dump(mode="json")

@@ -1,4 +1,5 @@
 import { Card, Stat } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import {
   api,
   type BudgetStatus,
@@ -147,18 +148,14 @@ export default async function FinancePage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold">Financial tracking</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Agent LLM spend · month-to-date budget &amp; 30-day breakdown
-        </p>
-      </header>
+      <PageHeader
+        title="Financial tracking"
+        description={
+          <>Agent LLM spend · month-to-date budget &amp; 30-day breakdown</>
+        }
+      />
 
-      {error && (
-        <Card title="Control plane unreachable">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} title="Control plane unreachable" />}
 
       {budget && (
         <>

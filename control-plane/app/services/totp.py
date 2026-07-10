@@ -46,7 +46,7 @@ def now_code(secret_b32: str, *, at: float | None = None) -> str:
     return _hotp(secret_b32, counter)
 
 
-def provisioning_uri(secret_b32: str, email: str, issuer: str = "Praetor") -> str:
+def provisioning_uri(secret_b32: str, email: str, issuer: str = "Ephorate") -> str:
     label = f"{quote(issuer)}:{quote(email)}"
     return (
         f"otpauth://totp/{label}?secret={secret_b32}"

@@ -1,4 +1,5 @@
 import { Card, Stat } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { api, type MetricAggregateResponse } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -74,18 +75,14 @@ export default async function MonitoringPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold">Claude monitoring</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Last 24 hours · 1h buckets · token + cost + latency
-        </p>
-      </header>
+      <PageHeader
+        title="Claude monitoring"
+        description={
+          <>Last 24 hours · 1h buckets · token + cost + latency</>
+        }
+      />
 
-      {error && (
-        <Card title="Control plane unreachable">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} title="Control plane unreachable" />}
 
       {overall && (
         <>

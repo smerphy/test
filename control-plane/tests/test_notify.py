@@ -32,8 +32,8 @@ def _client(handler: object) -> httpx.Client:
 def test_payload_carries_raw_fields(session: Session, org: Organization) -> None:
     a = _approval(session, org)
     payload = build_approval_payload(a)
-    assert payload["praetor"]["approval_id"] == a.id
-    assert payload["praetor"]["tool_name"] == "http.post"
+    assert payload["ephorate"]["approval_id"] == a.id
+    assert payload["ephorate"]["tool_name"] == "http.post"
     assert "Approval required" in payload["blocks"][0]["text"]["text"]
 
 
@@ -52,7 +52,7 @@ def test_delivers_when_webhook_configured(
 
     ok = deliver_approval_notification(session, a.id, http_client=_client(handler))
     assert ok is True
-    assert posted[0]["praetor"]["approval_id"] == a.id
+    assert posted[0]["ephorate"]["approval_id"] == a.id
 
 
 def test_noop_when_no_webhook(session: Session, org: Organization) -> None:

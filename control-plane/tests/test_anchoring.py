@@ -118,7 +118,7 @@ def test_anchor_endpoints(client: TestClient, session: Session, org: Organizatio
 
     export = client.get("/audit/export")
     assert export.status_code == 200
-    assert "X-Praetor-Audit-Root" in export.headers
+    assert "X-Ephorate-Audit-Root" in export.headers
     assert export.text.strip()  # one NDJSON line
 
 

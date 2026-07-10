@@ -154,6 +154,19 @@ def test_reconcile_enforce_only_tightens() -> None:
     assert reconcile("deny", "abstain", mode="enforce") == "deny"
 
 
+def test_reconcile_preserves_transform() -> None:
+    # `transform` is a real engine decision the AI can't emit; enforce mode
+    # must preserve it when the AI doesn't out-rank it, not silently degrade
+    # it to require_approval.
+    assert reconcile("transform", "allow", mode="enforce") == "transform"
+    assert reconcile("transform", "abstain", mode="enforce") == "transform"
+    # The AI may still tighten a transform.
+    assert reconcile("transform", "require_approval", mode="enforce") == "require_approval"
+    assert reconcile("transform", "deny", mode="enforce") == "deny"
+    # Advisory leaves it untouched.
+    assert reconcile("transform", "deny", mode="advisory") == "transform"
+
+
 # --- rule proposal ----------------------------------------------------------
 def test_propose_rules_authors_and_reviews() -> None:
     provider = StubProvider(

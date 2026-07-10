@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from praetor_engine.predicates import (
+from ephorate_engine.predicates import (
     AlwaysPredicate,
     AndPredicate,
     EqPredicate,

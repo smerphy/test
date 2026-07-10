@@ -17,9 +17,9 @@ from typing import Final
 
 import pytest
 
-from praetor_engine.evaluator import Evaluator, Policy
-from praetor_engine.predicates import AndPredicate, EqPredicate, MatchesPredicate
-from praetor_engine.types import (
+from ephorate_engine.evaluator import Evaluator, Policy
+from ephorate_engine.predicates import AndPredicate, EqPredicate, MatchesPredicate
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     PolicyInput,

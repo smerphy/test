@@ -1,9 +1,15 @@
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import clsx from "clsx";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { api, type AlertEvent, type AlertRule } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
+
+function fail(e: unknown): never {
+  redirect(`/alerts?error=${encodeURIComponent((e as Error).message)}`);
+}
 
 const METRIC_OPTIONS = [
   "cost_usd",
@@ -30,36 +36,48 @@ const AGGREGATION_OPTIONS = [
 
 async function createRuleAction(formData: FormData): Promise<void> {
   "use server";
-  await api.createAlertRule({
-    name: formData.get("name") as string,
-    metric: formData.get("metric") as AlertRule["metric"],
-    aggregation: formData.get("aggregation") as AlertRule["aggregation"],
-    window_minutes: Number(formData.get("window_minutes")),
-    threshold: Number(formData.get("threshold")),
-    comparison: formData.get("comparison") as AlertRule["comparison"],
-    severity: formData.get("severity") as AlertRule["severity"],
-    channel: formData.get("channel") as AlertRule["channel"],
-    target: formData.get("target") as string,
-    group_by: (formData.get("group_by") as string) || undefined,
-    filter_model: (formData.get("filter_model") as string) || undefined,
-    cooldown_minutes: Number(formData.get("cooldown_minutes") ?? 15),
-  });
+  try {
+    await api.createAlertRule({
+      name: formData.get("name") as string,
+      metric: formData.get("metric") as AlertRule["metric"],
+      aggregation: formData.get("aggregation") as AlertRule["aggregation"],
+      window_minutes: Number(formData.get("window_minutes")),
+      threshold: Number(formData.get("threshold")),
+      comparison: formData.get("comparison") as AlertRule["comparison"],
+      severity: formData.get("severity") as AlertRule["severity"],
+      channel: formData.get("channel") as AlertRule["channel"],
+      target: formData.get("target") as string,
+      group_by: (formData.get("group_by") as string) || undefined,
+      filter_model: (formData.get("filter_model") as string) || undefined,
+      cooldown_minutes: Number(formData.get("cooldown_minutes") ?? 15),
+    });
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/alerts");
 }
 
 async function evaluateRuleAction(formData: FormData): Promise<void> {
   "use server";
-  await api.evaluateAlertRule(formData.get("rule_id") as string);
+  try {
+    await api.evaluateAlertRule(formData.get("rule_id") as string);
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/alerts");
 }
 
 async function acknowledgeEventAction(formData: FormData): Promise<void> {
   "use server";
-  await api.acknowledgeAlert(
-    formData.get("event_id") as string,
-    formData.get("by") as string,
-    (formData.get("note") as string) || undefined,
-  );
+  try {
+    await api.acknowledgeAlert(
+      formData.get("event_id") as string,
+      formData.get("by") as string,
+      (formData.get("note") as string) || undefined,
+    );
+  } catch (e) {
+    fail(e);
+  }
   revalidatePath("/alerts");
 }
 
@@ -101,7 +119,12 @@ function SeverityBadge({ severity }: { severity: string }) {
   );
 }
 
-export default async function AlertsPage() {
+export default async function AlertsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
   let rules: AlertRule[] = [];
   let events: AlertEvent[] = [];
   let error: string | null = null;
@@ -114,19 +137,18 @@ export default async function AlertsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Alerts</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Threshold rules over Claude metrics. Routed to Slack, PagerDuty, or
-          a webhook on fire.
-        </p>
-      </header>
+      <PageHeader
+        title="Alerts"
+        description={
+          <>Threshold rules over Claude metrics. Routed to Slack, PagerDuty, or
+          a webhook on fire.</>
+        }
+      />
 
-      {error && (
-        <Card title="Control plane unreachable">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
+      {params.error && (
+        <ErrorNote message={decodeURIComponent(params.error)} title="Action failed" />
       )}
+      {error && <ErrorNote message={error} title="Control plane unreachable" />}
 
       <Card title="Create rule">
         <form action={createRuleAction} className="grid grid-cols-1 gap-3 md:grid-cols-3">

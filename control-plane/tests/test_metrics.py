@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import itertools
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import MetricEvent
+
+# Each metric carries the Claude API request id as its idempotency key; give
+# every fixture event a distinct one by default so the (org, request_id) unique
+# constraint doesn't collapse events that a test means to be separate.
+_req_ids = itertools.count()
 
 
 def _ev(**overrides) -> dict:
@@ -15,7 +21,7 @@ def _ev(**overrides) -> dict:
         "session_id": "sess-1",
         "model": "claude-opus-4-7",
         "operation": "messages.create",
-        "request_id": "req_abc",
+        "request_id": f"req_{next(_req_ids)}",
         "duration_ms": 1200,
         "input_tokens": 1000,
         "output_tokens": 500,
@@ -66,6 +72,35 @@ class TestIngest:
         ev = session.execute(MetricEvent.__table__.select().limit(1)).first()
         assert ev is not None
         assert ev.cost_usd == 42.0
+
+    def test_duplicate_request_id_is_idempotent(
+        self, client: TestClient, session: Session
+    ) -> None:
+        # At-least-once shipping: the SDK may re-ship a metric the server
+        # already committed. The (org, request_id) key must dedup it so cost
+        # isn't double-counted.
+        ev = _ev(request_id="req_dup", cost_usd=1.0, model="claude-imaginary")
+        assert client.post("/metrics/events", json=[ev]).json()["accepted"] == 1
+        assert client.post("/metrics/events", json=[ev]).json()["accepted"] == 1
+        rows = session.execute(
+            MetricEvent.__table__.select().where(
+                MetricEvent.request_id == "req_dup"
+            )
+        ).all()
+        assert len(rows) == 1
+
+    def test_null_request_ids_are_not_deduped(
+        self, client: TestClient, session: Session
+    ) -> None:
+        # Metrics without a request_id (NULLs are distinct) must all persist.
+        ev = _ev(request_id=None)
+        client.post("/metrics/events", json=[ev, dict(ev)])
+        rows = session.execute(
+            MetricEvent.__table__.select().where(
+                MetricEvent.request_id.is_(None)
+            )
+        ).all()
+        assert len(rows) == 2
 
 
 class TestSearch:

@@ -1,4 +1,4 @@
-"""End-to-end demo: an Anthropic-style agent gated by Praetor.
+"""End-to-end demo: an Anthropic-style agent gated by Ephorate.
 
 Runs without the real `anthropic` SDK installed by mocking the
 `messages.create` response. Demonstrates:
@@ -17,8 +17,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from praetor import JsonlAuditSink, PraetorClient, verify_chain
-from praetor.middleware.anthropic import gate_response
+from ephorate import JsonlAuditSink, EphorateClient, verify_chain
+from ephorate.middleware.anthropic import gate_response
 
 POLICY_BUNDLE = """\
 policies:
@@ -89,7 +89,7 @@ def main() -> None:
         bundle_path.write_text(POLICY_BUNDLE)
 
         audit_path = Path(tmpdir) / "audit.jsonl"
-        client = PraetorClient(
+        client = EphorateClient(
             bundle_path=bundle_path,
             audit_sink=JsonlAuditSink(audit_path),
             default_agent_id="research-bot",

@@ -99,7 +99,7 @@ class Organization(IdMixin, TimestampMixin, Base):
     # --- FinOps: agent LLM spend budget ----------------------------------
     # Monthly budget (USD) for the org's *agent* Claude/LLM spend as tracked by
     # MetricEvent.cost_usd. Distinct from ai_monthly_budget_usd (which caps
-    # Praetor's own advisory service). Powers the financial-tracking section's
+    # Ephorate's own advisory service). Powers the financial-tracking section's
     # burn-down + end-of-month forecast. Null = no budget (tracking only).
     monthly_cost_budget_usd: Mapped[float | None] = mapped_column(Float)
     # Hard enforcement: when true and month-to-date agent spend >=

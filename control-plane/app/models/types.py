@@ -15,8 +15,8 @@ ingest (never recomputed from the stored row), and anchoring compares stored
 hash strings — so what the payload columns hold at rest is orthogonal to
 verification.
 
-Encryption is opt-in (``PRAETOR_TELEMETRY_FIELD_ENCRYPTION`` + configured
-``PRAETOR_SECRET_KEYS``) and backward-compatible: with the flag off (or no
+Encryption is opt-in (``EPHORATE_TELEMETRY_FIELD_ENCRYPTION`` + configured
+``EPHORATE_SECRET_KEYS``) and backward-compatible: with the flag off (or no
 keys) values are stored as ordinary JSON, and on read a plain JSON value is
 returned untouched while a sealed string envelope is decrypted. Enabling or
 disabling the flag over time therefore leaves older rows readable.

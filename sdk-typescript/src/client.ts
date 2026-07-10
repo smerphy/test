@@ -12,7 +12,7 @@ export interface EvaluateOptions {
   context?: Record<string, unknown>;
 }
 
-export class PraetorClient {
+export class EphorateClient {
   private readonly evaluator: Evaluator;
   private readonly audit: AuditSink;
   private readonly defaultAgentId?: string;

@@ -1,4 +1,5 @@
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { api, type PolicyVersion } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -12,26 +13,22 @@ export default async function BundleDetailPage({
   let versions: PolicyVersion[] = [];
   let error: string | null = null;
   try {
-    const summaries = await api.listVersions(bundleId);
-    versions = await Promise.all(summaries.map((s) => api.getVersion(s.id)));
+    // One call fetches every version with its yaml_text (no per-version N+1).
+    versions = await api.listVersionsFull(bundleId);
   } catch (e) {
     error = (e as Error).message;
   }
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Bundle versions</h1>
-        <p className="mt-1 font-mono text-xs text-foreground/60">
-          {bundleId}
-        </p>
-      </header>
+      <PageHeader
+        title="Bundle versions"
+        description={
+          <>{bundleId}</>
+        }
+      />
 
-      {error && (
-        <Card title="Error">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       {versions.length === 0 ? (
         <Card>

@@ -1,4 +1,4 @@
-"""OTLP (OpenTelemetry) metrics → Praetor MetricEvent translation.
+"""OTLP (OpenTelemetry) metrics → Ephorate MetricEvent translation.
 
 The control-plane side of the OTel collector tier: a standard OpenTelemetry
 Collector (or any OTLP exporter) can batch agent LLM telemetry and POST it here
@@ -11,15 +11,15 @@ We map GenAI semantic-convention attributes on each metric data point to one
     gen_ai.request.model / gen_ai.response.model  -> model
     gen_ai.usage.input_tokens                     -> input_tokens
     gen_ai.usage.output_tokens                    -> output_tokens
-    praetor.agent_id (or resource service.name)   -> agent_id
-    praetor.session_id                            -> session_id
-    praetor.duration_ms                           -> duration_ms
-    praetor.cost_usd                              -> cost_usd (else server-priced)
-    praetor.status                                -> status (default "success")
+    ephorate.agent_id (or resource service.name)   -> agent_id
+    ephorate.session_id                            -> session_id
+    ephorate.duration_ms                           -> duration_ms
+    ephorate.cost_usd                              -> cost_usd (else server-priced)
+    ephorate.status                                -> status (default "success")
     timeUnixNano                                  -> timestamp
 
 Only metrics named in ``_CALL_METRICS`` are consumed; everything else is
-ignored, so a collector can multiplex Praetor telemetry with unrelated metrics.
+ignored, so a collector can multiplex Ephorate telemetry with unrelated metrics.
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ from typing import Any
 
 from app.schemas import MetricEventIn
 
-# Metric names carrying a per-call data point (GenAI semconv + Praetor's own).
+# Metric names carrying a per-call data point (GenAI semconv + Ephorate's own).
 _CALL_METRICS = frozenset(
-    {"praetor.llm.call", "gen_ai.client.operation.duration"}
+    {"ephorate.llm.call", "gen_ai.client.operation.duration"}
 )
 
 
@@ -90,22 +90,22 @@ def parse_metrics(otlp: dict[str, Any]) -> list[MetricEventIn]:
                     if not model:
                         continue
                     agent = (
-                        a.get("praetor.agent_id")
+                        a.get("ephorate.agent_id")
                         or res_attrs.get("service.name")
                         or "unknown"
                     )
-                    cost = a.get("praetor.cost_usd")
+                    cost = a.get("ephorate.cost_usd")
                     events.append(
                         MetricEventIn(
                             timestamp=_ts(dp.get("timeUnixNano")),
                             agent_id=str(agent),
-                            session_id=a.get("praetor.session_id"),
+                            session_id=a.get("ephorate.session_id"),
                             model=str(model),
-                            duration_ms=_int(a, "praetor.duration_ms"),
+                            duration_ms=_int(a, "ephorate.duration_ms"),
                             input_tokens=_int(a, "gen_ai.usage.input_tokens"),
                             output_tokens=_int(a, "gen_ai.usage.output_tokens"),
                             cost_usd=float(cost) if cost is not None else None,
-                            status=str(a.get("praetor.status", "success")),
+                            status=str(a.get("ephorate.status", "success")),
                         )
                     )
     return events

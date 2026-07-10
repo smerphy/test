@@ -100,7 +100,7 @@ def get_report_pdf(
             detail=f"report not ready (status={report.status.value})",
         )
     pdf = render_report_pdf(report)
-    filename = f"praetor-{report.framework}-{report.id[:8]}.pdf"
+    filename = f"ephorate-{report.framework}-{report.id[:8]}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",

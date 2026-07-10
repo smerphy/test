@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from praetor_engine.types import (
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     DecisionResult,
@@ -13,7 +13,7 @@ from praetor_engine.types import (
     ToolCall,
 )
 
-from praetor.audit import JsonlAuditSink, verify_chain
+from ephorate.audit import JsonlAuditSink, verify_chain
 
 
 def _pi_with_pii() -> PolicyInput:
@@ -61,9 +61,9 @@ def test_no_redaction_by_default(tmp_path: Path) -> None:
 
 
 def test_client_option_wires_redaction(tmp_path: Path) -> None:
-    from praetor import PraetorClient
+    from ephorate import EphorateClient
 
-    client = PraetorClient(
+    client = EphorateClient(
         policies=[], audit_log_path=tmp_path / "a.jsonl", redact_pii=True
     )
     event = client._audit.record(_pi_with_pii(), _decision())

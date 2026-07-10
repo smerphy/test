@@ -74,14 +74,21 @@ def erase_subject(
                 a.reason = new_reason
 
     # Audit events are immutable (hash-chained) — report references, don't
-    # mutate. JSON containment SQL differs across engines, so scan (bounded).
+    # mutate. JSON containment SQL differs across engines, so scan every row.
+    # Stream in server-side chunks (yield_per) rather than capping the scan: a
+    # fixed LIMIT silently under-reported the blast radius for orgs above the
+    # cap, telling an operator fewer immutable records referenced the subject
+    # than actually do.
     matched = 0
-    rows = session.execute(
-        select(AuditEvent.tool_arguments, AuditEvent.reason)
-        .where(AuditEvent.organization_id == org_id)
-        .limit(50_000)
-    ).all()
-    for args, reason in rows:
+    stream = (
+        session.execute(
+            select(AuditEvent.tool_arguments, AuditEvent.reason)
+            .where(AuditEvent.organization_id == org_id)
+            .execution_options(stream_results=True)
+        )
+        .yield_per(2_000)
+    )
+    for args, reason in stream:
         _, c1 = scrub_subject(args, subject)
         _, c2 = scrub_subject(reason or "", subject)
         if c1 or c2:

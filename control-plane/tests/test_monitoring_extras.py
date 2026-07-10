@@ -185,16 +185,16 @@ class TestPrometheus:
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/plain")
         body = r.text
-        assert "praetor_requests_total" in body
-        assert "praetor_tokens_total" in body
-        assert "praetor_cost_usd_total" in body
-        assert "praetor_request_duration_ms_summary" in body
+        assert "ephorate_requests_total" in body
+        assert "ephorate_tokens_total" in body
+        assert "ephorate_cost_usd_total" in body
+        assert "ephorate_request_duration_ms_summary" in body
         assert 'model="claude-opus-4-7"' in body
         assert 'model="claude-haiku-4-5"' in body
         assert 'status="error"' in body
         # Help + type lines present (Prometheus format compliance).
-        assert "# HELP praetor_requests_total" in body
-        assert "# TYPE praetor_requests_total counter" in body
+        assert "# HELP ephorate_requests_total" in body
+        assert "# TYPE ephorate_requests_total counter" in body
 
     def test_exposition_quantile_labels(
         self, client: TestClient, session: Session, org: Organization

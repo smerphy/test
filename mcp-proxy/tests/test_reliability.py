@@ -7,13 +7,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from praetor_engine.evaluator import Policy
-from praetor_engine.predicates import EqPredicate
-from praetor_engine.types import Decision
+from ephorate_engine.evaluator import Policy
+from ephorate_engine.predicates import EqPredicate
+from ephorate_engine.types import Decision
 
-from praetor_mcp.config import parse_config
-from praetor_mcp.gate import PolicyGate
-from praetor_mcp.metrics import ProxyMetrics
+from ephorate_mcp.config import parse_config
+from ephorate_mcp.gate import PolicyGate
+from ephorate_mcp.metrics import ProxyMetrics
 from tests.test_hardening import _drive  # ASGI driver
 
 
@@ -26,10 +26,10 @@ def test_metrics_render() -> None:
     m.record_upstream_error()
     m.record_auth_rejection()
     text = m.render_prometheus()
-    assert 'praetor_mcp_calls_total{decision="allow"} 2' in text
-    assert 'praetor_mcp_calls_total{decision="deny"} 1' in text
-    assert "praetor_mcp_upstream_errors_total 1" in text
-    assert "praetor_mcp_auth_rejections_total 1" in text
+    assert 'ephorate_mcp_calls_total{decision="allow"} 2' in text
+    assert 'ephorate_mcp_calls_total{decision="deny"} 1' in text
+    assert "ephorate_mcp_upstream_errors_total 1" in text
+    assert "ephorate_mcp_auth_rejections_total 1" in text
 
 
 def _config() -> Any:
@@ -42,18 +42,18 @@ def _config() -> Any:
 
 
 def _gate(effect: Decision, tool: str = "mock__echo") -> PolicyGate:
-    from praetor import PraetorClient
+    from ephorate import EphorateClient
 
     pol = Policy(
         id="p", effect=effect,
         when=EqPredicate(path="tool.name", value=tool), reason="r",
         transform={} if effect is Decision.TRANSFORM else None,
     )
-    return PolicyGate(PraetorClient(policies=[pol], default_agent_id="a"))
+    return PolicyGate(EphorateClient(policies=[pol], default_agent_id="a"))
 
 
 async def test_call_records_decision_metric() -> None:
-    from praetor_mcp.server import PolicyBlocked, ProxyServer
+    from ephorate_mcp.server import PolicyBlocked, ProxyServer
 
     proxy = ProxyServer(_config(), gate=_gate(Decision.DENY))
     with pytest.raises(PolicyBlocked):
@@ -61,11 +61,13 @@ async def test_call_records_decision_metric() -> None:
     assert proxy.metrics._calls["deny"] == 1
 
 
-# --- upstream reconnect + retry ---------------------------------------------
-async def test_upstream_reconnect_retry(monkeypatch) -> None:
-    from praetor_mcp.server import ProxyServer
+# --- upstream failure: reconnect for future calls, do NOT re-execute --------
+async def test_upstream_error_reconnects_without_reexec(monkeypatch) -> None:
+    from ephorate_mcp.server import ProxyServer
 
     proxy = ProxyServer(_config(), gate=_gate(Decision.ALLOW))
+
+    healthy_calls = 0
 
     class _Failing:
         async def call_tool(self, tool: str, args: dict[str, Any]) -> Any:
@@ -73,24 +75,31 @@ async def test_upstream_reconnect_retry(monkeypatch) -> None:
 
     class _Healthy:
         async def call_tool(self, tool: str, args: dict[str, Any]) -> Any:
+            nonlocal healthy_calls
+            healthy_calls += 1
             return SimpleNamespace(content=["recovered"])
 
     proxy._routes["mock__echo"] = ("mock", "echo", _Failing())
-    healthy = _Healthy()
+    reconnected = False
 
     async def _fake_reconnect(name: str) -> Any:
-        proxy._routes["mock__echo"] = ("mock", "echo", healthy)
-        return healthy
+        nonlocal reconnected
+        reconnected = True
+        proxy._routes["mock__echo"] = ("mock", "echo", _Healthy())
+        return proxy._routes["mock__echo"][2]
 
     monkeypatch.setattr(proxy, "_reconnect", _fake_reconnect)
-    result = await proxy.handle_call_tool("mock__echo", {})
-    assert result == ["recovered"]
+    # A non-idempotent call that fails must surface the error, not silently
+    # re-run — even though a session is repaired for the next call.
+    with pytest.raises(RuntimeError, match="upstream dropped"):
+        await proxy.handle_call_tool("mock__echo", {})
+    assert reconnected is True  # session repaired for subsequent calls
+    assert healthy_calls == 0  # the failed call was NOT re-executed
     assert proxy.metrics.upstream_errors == 1
-    assert proxy.metrics._calls["allow"] == 1
 
 
 async def test_reconnect_failure_propagates(monkeypatch) -> None:
-    from praetor_mcp.server import ProxyServer
+    from ephorate_mcp.server import ProxyServer
 
     proxy = ProxyServer(_config(), gate=_gate(Decision.ALLOW))
 
@@ -112,16 +121,16 @@ async def test_reconnect_failure_propagates(monkeypatch) -> None:
 # --- /metrics endpoint + auth rejection metric ------------------------------
 async def test_metrics_endpoint() -> None:
     pytest.importorskip("mcp")
-    from praetor_mcp.server import build_asgi_app
+    from ephorate_mcp.server import build_asgi_app
 
     app = build_asgi_app(_config())
     r = await _drive(app, headers=[], path="/metrics")
     assert r["status"] == 200
-    assert b"praetor_mcp_calls_total" in r["body"]
+    assert b"ephorate_mcp_calls_total" in r["body"]
 
 
 async def test_auth_rejection_increments_metric() -> None:
-    from praetor_mcp.auth import BearerAuthMiddleware
+    from ephorate_mcp.auth import BearerAuthMiddleware
 
     metrics = ProxyMetrics()
 
@@ -136,7 +145,7 @@ async def test_auth_rejection_increments_metric() -> None:
 # --- DNS-rebinding security settings ----------------------------------------
 def test_build_asgi_app_with_allowed_hosts() -> None:
     pytest.importorskip("mcp")
-    from praetor_mcp.server import build_asgi_app
+    from ephorate_mcp.server import build_asgi_app
 
     cfg = parse_config(
         {
@@ -153,7 +162,7 @@ def test_build_asgi_app_with_allowed_hosts() -> None:
 
 # --- tool-output DLP --------------------------------------------------------
 async def test_tool_output_dlp_redacts(monkeypatch) -> None:
-    from praetor_mcp.server import ProxyServer
+    from ephorate_mcp.server import ProxyServer
 
     cfg = parse_config(
         {
@@ -176,7 +185,7 @@ async def test_tool_output_dlp_redacts(monkeypatch) -> None:
 
 
 async def test_tool_output_dlp_off_by_default() -> None:
-    from praetor_mcp.server import ProxyServer
+    from ephorate_mcp.server import ProxyServer
 
     proxy = ProxyServer(_config(), gate=_gate(Decision.ALLOW))
 

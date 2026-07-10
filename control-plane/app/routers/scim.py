@@ -2,7 +2,7 @@
 
 Lets an IdP (Okta, Azure AD, OneLogin, …) create, update, and — critically —
 deprovision users automatically. Authenticated with a per-org bearer token
-(`Authorization: Bearer <token>` mapped to an org via PRAETOR_SCIM_TOKENS).
+(`Authorization: Bearer <token>` mapped to an org via EPHORATE_SCIM_TOKENS).
 Deprovisioning (active=false / DELETE) also revokes the user's live sessions.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
@@ -23,6 +23,20 @@ router = APIRouter(tags=["scim"])
 _USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
 _LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 _ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error"
+
+
+def _as_bool(value: object, *, default: bool = False) -> bool:
+    """Parse a SCIM boolean safely.
+
+    JSON ``true`` — or the string ``"true"`` (case-insensitive) some clients
+    send — is True; everything else is False. Never ``bool()`` of a raw string:
+    ``bool("false")`` is truthy, which would silently invert a deprovision.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return default
 
 
 def scim_org(
@@ -94,7 +108,7 @@ def create_user(
         name=name,
         organization_id=org.id,
         role=Role.VIEWER.value,  # provisioned users start least-privileged
-        active=bool(body.get("active", True)),
+        active=_as_bool(body.get("active", True), default=True),
         external_id=body.get("externalId"),
     )
     session.add(user)
@@ -110,16 +124,30 @@ def list_users(
     startIndex: int = 1,
     count: int = 100,
 ) -> dict[str, Any]:
-    stmt = select(User).where(User.organization_id == org.id)
+    where = [User.organization_id == org.id]
     # Support the one filter IdPs actually send: userName eq "x".
     if filter and "userName" in filter and " eq " in filter:
         value = filter.split(" eq ", 1)[1].strip().strip('"').lower()
-        stmt = stmt.where(User.email == value)
-    users = list(session.execute(stmt).scalars())
-    page = users[max(0, startIndex - 1) : max(0, startIndex - 1) + count]
+        where.append(User.email == value)
+    # Paginate at the DB level: never materialize every user to slice in
+    # Python (an org with 100k users would load them all per page request).
+    total = session.execute(
+        select(func.count()).select_from(User).where(*where)
+    ).scalar_one()
+    offset = max(0, startIndex - 1)
+    limit = max(0, count)
+    page = list(
+        session.execute(
+            select(User)
+            .where(*where)
+            .order_by(User.id)
+            .offset(offset)
+            .limit(limit)
+        ).scalars()
+    )
     return {
         "schemas": [_LIST_SCHEMA],
-        "totalResults": len(users),
+        "totalResults": total,
         "startIndex": startIndex,
         "itemsPerPage": len(page),
         "Resources": [_repr(u) for u in page],
@@ -155,7 +183,7 @@ def replace_user(
             "formatted"
         )
     if "active" in body:
-        new_active = bool(body["active"])
+        new_active = _as_bool(body["active"], default=user.active)
         if user.active and not new_active:
             _revoke(user)
         user.active = new_active
@@ -178,8 +206,8 @@ def patch_user(
         path = str(op.get("path", "")).lower()
         value = op.get("value")
         if path == "active" or (path == "" and isinstance(value, dict) and "active" in value):
-            active = value.get("active") if isinstance(value, dict) else value
-            active = bool(active)
+            raw = value.get("active") if isinstance(value, dict) else value
+            active = _as_bool(raw, default=user.active)
             if user.active and not active:
                 _revoke(user)
             user.active = active

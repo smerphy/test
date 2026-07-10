@@ -9,7 +9,7 @@ import httpx
 import pytest
 import respx
 
-from praetor import (
+from ephorate import (
     AnthropicMonitor,
     CallbackMetricSink,
     ControlPlaneMetricSink,
@@ -118,7 +118,7 @@ class TestAnthropicMonitorSuccessPath:
         assert events[0].tools_used == ["http.get", "fs.read"]
         assert events[0].stop_reason == "tool_use"
 
-    def test_session_id_threaded_via_praetor_kwarg(self) -> None:
+    def test_session_id_threaded_via_ephorate_kwarg(self) -> None:
         events: list[MetricEvent] = []
         sink = CallbackMetricSink(events.append)
         client = _mock_anthropic_client(_response())
@@ -127,15 +127,15 @@ class TestAnthropicMonitorSuccessPath:
         ).messages.create(
             model="claude-opus-4-7",
             messages=[],
-            praetor_session_id="sess-77",
-            praetor_metadata={"trace_id": "abc"},
+            ephorate_session_id="sess-77",
+            ephorate_metadata={"trace_id": "abc"},
         )
         assert events[0].session_id == "sess-77"
         assert events[0].metadata == {"trace_id": "abc"}
-        # praetor-* kwargs are scrubbed before reaching the SDK call.
+        # ephorate-* kwargs are scrubbed before reaching the SDK call.
         forwarded = client.messages.create.call_args.kwargs
-        assert "praetor_session_id" not in forwarded
-        assert "praetor_metadata" not in forwarded
+        assert "ephorate_session_id" not in forwarded
+        assert "ephorate_metadata" not in forwarded
 
 
 class TestAnthropicMonitorErrorPath:

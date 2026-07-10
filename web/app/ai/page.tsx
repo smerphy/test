@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { SeverityBadge } from "@/components/SeverityBadge";
 import {
   api,
@@ -98,28 +99,22 @@ export default async function AIPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">AI advisory</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Opt-in, bring-your-own-key, vendor-neutral. A multi-agent panel
+      <PageHeader
+        title="AI advisory"
+        description={
+          <>Opt-in, bring-your-own-key, vendor-neutral. A multi-agent panel
           advises on ambiguous decisions and proposes rule improvements. The
           deterministic engine stays authoritative — in enforce mode the AI can
-          only tighten, never loosen.
-        </p>
-      </header>
+          only tighten, never loosen.</>
+        }
+      />
 
       {actionError && (
         <Card title="Action failed">
           <p className="text-sm text-red-400">{actionError}</p>
         </Card>
       )}
-      {error && (
-        <Card title="Error">
-          <pre className="overflow-x-auto font-mono text-xs text-red-400">
-            {error}
-          </pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       {isAdmin && config && (
         <Card title="Configuration">

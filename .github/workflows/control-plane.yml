@@ -19,7 +19,7 @@ jobs:
     env:
       # The suite runs without configured API keys / a production session
       # secret, which is only permitted in explicit dev mode.
-      PRAETOR_DEV_MODE: "true"
+      EPHORATE_DEV_MODE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +33,7 @@ jobs:
 
       - name: Sync dependencies
         working-directory: .
-        run: uv sync --package praetor-control-plane --extra dev
+        run: uv sync --package ephorate-control-plane --extra dev
 
       - name: Ruff
         run: uv run ruff check app tests

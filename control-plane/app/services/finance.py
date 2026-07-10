@@ -9,7 +9,7 @@ owner needs:
   project, plus a daily trend and top spenders. Chargeback/showback in one call.
 * :func:`budget_status` — month-to-date agent spend versus the org's monthly
   cost budget, with a linear end-of-month forecast (burn rate) and the separate
-  Praetor advisory (BYOK) spend alongside.
+  Ephorate advisory (BYOK) spend alongside.
 
 Aggregation is computed in Python over one indexed window scan, matching
 ``app.services.metrics`` — portable across SQLite (tests) and Postgres. At
@@ -178,7 +178,7 @@ def budget_status(
     pct_used = round(agent_spend / budget, 4) if budget else None
     forecast_over = bool(budget is not None and projected > budget)
 
-    # Praetor's own advisory (BYOK) spend for the same month, for context.
+    # Ephorate's own advisory (BYOK) spend for the same month, for context.
     advisory = session.execute(
         select(AIUsage).where(
             AIUsage.organization_id == org.id,

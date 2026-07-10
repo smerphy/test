@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from praetor_engine.cli import (
+from ephorate_engine.cli import (
     EXIT_ALLOW,
     EXIT_BAD_INPUT,
     EXIT_DENY,

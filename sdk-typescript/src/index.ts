@@ -9,4 +9,4 @@ export {
   type AuditEvent,
   type AuditSink,
 } from "./audit.js";
-export { PraetorClient, type EvaluateOptions } from "./client.js";
+export { EphorateClient, type EvaluateOptions } from "./client.js";

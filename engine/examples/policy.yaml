@@ -1,7 +1,7 @@
-# Example Praetor policy bundle.
+# Example Ephorate policy bundle.
 #
 # Evaluate against an input with:
-#   praetor eval --policy engine/examples/policy.yaml --input engine/examples/input.json
+#   ephorate eval --policy engine/examples/policy.yaml --input engine/examples/input.json
 policies:
   - id: allow-public-https
     effect: allow

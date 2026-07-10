@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from praetor_engine.types import (
+from ephorate_engine.types import (
     AgentInfo,
     Decision,
     DecisionResult,
@@ -13,7 +13,7 @@ from praetor_engine.types import (
     ToolCall,
 )
 
-from praetor.audit import JsonlAuditSink, RemoteShipper, verify_chain
+from ephorate.audit import JsonlAuditSink, RemoteShipper, verify_chain
 
 _DECISION = DecisionResult(decision=Decision.ALLOW, reason="ok", matched_policy_id="p1")
 

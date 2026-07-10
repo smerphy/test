@@ -1,6 +1,6 @@
 # Claude monitoring & alerting
 
-Praetor captures one telemetry event per Claude API call and runs
+Ephorate captures one telemetry event per Claude API call and runs
 threshold alert rules over rolling windows. The pipeline is
 end-to-end:
 
@@ -21,13 +21,13 @@ Your agent
 
 ```python
 from anthropic import Anthropic
-from praetor import AnthropicMonitor, ControlPlaneMetricSink
+from ephorate import AnthropicMonitor, ControlPlaneMetricSink
 import os
 
 sink = ControlPlaneMetricSink(
-    os.environ["PRAETOR_CONTROL_PLANE_URL"],
-    api_key=os.environ["PRAETOR_API_KEY"],
-    org_slug=os.environ["PRAETOR_ORG_SLUG"],
+    os.environ["EPHORATE_CONTROL_PLANE_URL"],
+    api_key=os.environ["EPHORATE_API_KEY"],
+    org_slug=os.environ["EPHORATE_ORG_SLUG"],
     batch_size=50,
 )
 monitor = AnthropicMonitor(
@@ -43,8 +43,8 @@ response = monitor.messages.create(
     model="claude-opus-4-7",
     max_tokens=1024,
     messages=[{"role": "user", "content": "hi"}],
-    praetor_session_id=session_id,        # optional, threaded through
-    praetor_metadata={"trace_id": trace}, # optional, attached to event
+    ephorate_session_id=session_id,        # optional, threaded through
+    ephorate_metadata={"trace_id": trace}, # optional, attached to event
 )
 ```
 
@@ -69,11 +69,11 @@ response = monitor.messages.create(
 ## Price book
 
 The SDK ships a default Claude price book. Override with your contract
-pricing via `PRAETOR_CLAUDE_PRICE_BOOK_JSON` (set on both the SDK
+pricing via `EPHORATE_CLAUDE_PRICE_BOOK_JSON` (set on both the SDK
 process and the control plane):
 
 ```bash
-export PRAETOR_CLAUDE_PRICE_BOOK_JSON='{
+export EPHORATE_CLAUDE_PRICE_BOOK_JSON='{
   "claude-opus-4-7": {
     "input": 12.0, "output": 60.0,
     "cache_read": 1.2, "cache_write": 15.0
@@ -123,7 +123,7 @@ threshold`". Routed to one channel.
 - **Slack** — `target` is a Slack incoming-webhook URL. Payload uses
   blocks (header + detail + context line).
 - **PagerDuty** — `target` is the Events API v2 routing key. Dedup
-  key is `praetor:<rule_id>:<group_key>` so re-firings collapse.
+  key is `ephorate:<rule_id>:<group_key>` so re-firings collapse.
 - **Webhook** — `target` is any URL. Body is the raw rule + event JSON.
 - **Email** — interface only; bundle SES/SMTP yourself.
 
@@ -143,14 +143,14 @@ every 60s (or your preferred cadence):
 ```python
 from celery.schedules import crontab
 celery_app.conf.beat_schedule = {
-    "praetor-alerts-every-60s": {
-        "task": "praetor.alerts.evaluate_all",
+    "ephorate-alerts-every-60s": {
+        "task": "ephorate.alerts.evaluate_all",
         "schedule": 60.0,
     },
 }
 ```
 
-In dev / tests, `PRAETOR_CELERY_TASK_ALWAYS_EAGER=true` is the
+In dev / tests, `EPHORATE_CELERY_TASK_ALWAYS_EAGER=true` is the
 default and rules can be evaluated synchronously via
 `POST /alerts/rules/{id}/evaluate`.
 

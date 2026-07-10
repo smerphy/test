@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { Card } from "@/components/Card";
+import { ErrorNote, PageHeader } from "@/components/Page";
 import { api, type ApprovalRequest } from "@/lib/api";
 import { roleAtLeast } from "@/lib/rbac";
 
@@ -31,18 +32,14 @@ export default async function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Approvals</h1>
-        <p className="mt-1 text-sm text-foreground/60">
-          Tool calls awaiting human authorization.
-        </p>
-      </header>
+      <PageHeader
+        title="Approvals"
+        description={
+          <>Tool calls awaiting human authorization.</>
+        }
+      />
 
-      {error && (
-        <Card title="Error">
-          <pre className="font-mono text-xs text-danger">{error}</pre>
-        </Card>
-      )}
+      {error && <ErrorNote message={error} />}
 
       {approvals.length === 0 && !error ? (
         <Card>

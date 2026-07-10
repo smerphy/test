@@ -32,7 +32,7 @@ def test_totp_window() -> None:
 
 
 def test_provisioning_uri() -> None:
-    uri = totp.provisioning_uri("ABC234", "a@acme.com", issuer="Praetor")
+    uri = totp.provisioning_uri("ABC234", "a@acme.com", issuer="Ephorate")
     assert uri.startswith("otpauth://totp/")
     assert "secret=ABC234" in uri
 

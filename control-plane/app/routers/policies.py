@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
 # We import the engine parser to validate YAML on the way in.
-from praetor_engine.parser import PolicyParseError, parse_bundle
+from ephorate_engine.parser import PolicyParseError, parse_bundle
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -165,6 +164,31 @@ def list_versions(
 ) -> list[PolicyVersion]:
     """List versions of a bundle. Omits `yaml_text` for payload sanity;
     fetch one version's full text via `GET /versions/{version_id}`."""
+    bundle = get_owned(
+        session,
+        PolicyBundle,
+        bundle_id,
+        org,
+        owner=lambda b: b.project.organization_id,
+        detail="bundle not found",
+    )
+    return list(bundle.versions)
+
+
+@router.get(
+    "/bundles/{bundle_id}/versions/full",
+    response_model=list[PolicyVersionOut],
+)
+def list_versions_full(
+    bundle_id: str,
+    org: Organization = Depends(current_org),
+    session: Session = Depends(get_session),
+) -> list[PolicyVersion]:
+    """List versions of a bundle *with* their full `yaml_text` in one call.
+
+    The version rows are already loaded by the relationship, so this is a
+    single round-trip — it lets a client render every version's YAML without
+    an N+1 of `GET /versions/{id}` per version."""
     bundle = get_owned(
         session,
         PolicyBundle,
