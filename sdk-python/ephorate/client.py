@@ -205,6 +205,11 @@ class EphorateClient:
         if self._shipper is not None:
             self._shipper.stop()
         self._audit.close()
+        # Release the heartbeat / finding-report HTTP client we created.
+        if self._heartbeat_client is not None:
+            with contextlib.suppress(Exception):
+                self._heartbeat_client.close()
+            self._heartbeat_client = None
 
     @property
     def policies(self) -> tuple[Policy, ...]:

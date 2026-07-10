@@ -40,6 +40,13 @@ class HttpTransport:
         self._url = base_url.rstrip("/") + "/audit/events"
         self._headers = ephorate_headers(api_key, org_slug)
         self._client = http_client or httpx.Client(timeout=timeout_seconds)
+        # Only close a client we created; never a caller-supplied one.
+        self._owns_client = http_client is None
+
+    def close(self) -> None:
+        """Close the underlying HTTP client if this transport created it."""
+        if self._owns_client:
+            self._client.close()
 
     def ship(self, event: AuditEvent) -> None:
         """Ship a single event (a one-element batch)."""

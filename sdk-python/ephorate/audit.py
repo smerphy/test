@@ -14,11 +14,13 @@ only on ack. Network failures back off but never drop events.
 from __future__ import annotations
 
 import contextlib
+import itertools
 import json
 import os
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections import deque
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -375,6 +377,16 @@ class RemoteShipper:
         # seq restarts at 0 for each session, so it is not globally monotonic
         # and cannot be used to track shipping progress across the whole file.
         self._acked_count = self._load_offset()
+        # Serialize ship_pending: the background thread and a synchronous
+        # flush() caller must not mutate shipping state concurrently.
+        self._lock = threading.Lock()
+        # Incremental tail state: byte position we've parsed up to, events from
+        # the already-acked prefix still to skip on first catch-up, and the
+        # buffer of parsed-but-unacked events. This avoids re-reading and
+        # re-validating the whole append-only log on every poll.
+        self._read_pos = 0
+        self._skip_remaining = self._acked_count
+        self._buffered: deque[AuditEvent] = deque()
 
     @property
     def acked_count(self) -> int:
@@ -405,44 +417,76 @@ class RemoteShipper:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=timeout)
+        # Release the transport's HTTP connection pool (if it owns one).
+        close = getattr(self._transport, "close", None)
+        if callable(close):
+            with contextlib.suppress(Exception):
+                close()
+
+    def _refill(self) -> None:
+        """Parse newly-appended events into the buffer, incrementally.
+
+        Seeks to the last byte position we parsed and reads only what's new,
+        stopping at the last complete line (a partial in-progress write is left
+        for the next poll). When the file hasn't grown, this is a single
+        ``stat()`` and returns immediately — no re-read, no re-validation of the
+        already-shipped prefix.
+        """
+        path = self._sink.path
+        if not path.exists():
+            return
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return
+        if size <= self._read_pos:
+            return  # nothing new appended (idle fast path)
+        with open(path, "rb") as f:
+            f.seek(self._read_pos)
+            data = f.read(size - self._read_pos)
+        last_nl = data.rfind(b"\n")
+        if last_nl == -1:
+            return  # no complete line yet
+        chunk = data[: last_nl + 1]
+        lines = [ln for ln in chunk.split(b"\n") if ln.strip()]
+        # Parse first (may raise on a partial/corrupt line); only advance state
+        # once the whole chunk parses, so a failed poll is retried cleanly.
+        skip = self._skip_remaining
+        parsed: list[AuditEvent] = []
+        for ln in lines:
+            if skip > 0:
+                skip -= 1
+                continue
+            parsed.append(AuditEvent.model_validate_json(ln))
+        self._skip_remaining = skip
+        self._read_pos += len(chunk)
+        self._buffered.extend(parsed)
 
     def ship_pending(self) -> int:
         """Synchronously ship every event past the offset, in batches. Returns
         the number of events shipped."""
-        pending = [
-            event
-            for index, event in enumerate(self._read_all_events())
-            if index >= self._acked_count
-        ]
-        shipped = 0
-        for start in range(0, len(pending), self._batch_size):
-            batch = pending[start : start + self._batch_size]
-            if not self._ship_batch_with_backoff(batch):
-                # Shutting down before this batch was acked. Do NOT advance the
-                # offset, or the batch is dropped: on restart the backlog scan
-                # would begin after it. Leaving the offset put means it is
-                # re-shipped next run (at-least-once; server dedups).
-                break
-            self._acked_count += len(batch)
-            self._save_offset(self._acked_count)
-            shipped += len(batch)
-        return shipped
+        with self._lock:
+            self._refill()
+            shipped = 0
+            while self._buffered:
+                batch = list(itertools.islice(self._buffered, self._batch_size))
+                if not self._ship_batch_with_backoff(batch):
+                    # Shutting down before this batch was acked. Do NOT advance
+                    # the offset, or the batch is dropped: leaving it put means
+                    # it is re-shipped next run (at-least-once; server dedups).
+                    break
+                for _ in range(len(batch)):
+                    self._buffered.popleft()
+                self._acked_count += len(batch)
+                self._save_offset(self._acked_count)
+                shipped += len(batch)
+            return shipped
 
     def _run(self) -> None:  # pragma: no cover - exercised via integration tests
         while not self._stop.is_set():
             with contextlib.suppress(Exception):
                 self.ship_pending()
             self._stop.wait(self._poll)
-
-    def _read_all_events(self) -> Iterator[AuditEvent]:
-        if not self._sink.path.exists():
-            return
-        with open(self._sink.path) as f:
-            for raw in f:
-                stripped = raw.strip()
-                if not stripped:
-                    continue
-                yield AuditEvent.model_validate_json(stripped)
 
     def _ship(self, batch: list[AuditEvent]) -> None:
         """Ship a batch in one request when the transport supports it, else
