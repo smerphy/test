@@ -6,8 +6,8 @@ tamper-evident audit, and detection &amp; response for your **Claude** and
 
 _Agents act. Ephorate decides._
 
-[![CI](https://github.com/smerphy/test/actions/workflows/control-plane.yml/badge.svg)](https://github.com/smerphy/test/actions/workflows/control-plane.yml)
-[![Engine](https://github.com/smerphy/test/actions/workflows/engine.yml/badge.svg)](https://github.com/smerphy/test/actions/workflows/engine.yml)
+[![Control plane CI](https://github.com/smerphy/Ephorate-AI-Governance-and-Monitoring/actions/workflows/control-plane.yml/badge.svg)](https://github.com/smerphy/Ephorate-AI-Governance-and-Monitoring/actions/workflows/control-plane.yml)
+[![Engine CI](https://github.com/smerphy/Ephorate-AI-Governance-and-Monitoring/actions/workflows/engine.yml/badge.svg)](https://github.com/smerphy/Ephorate-AI-Governance-and-Monitoring/actions/workflows/engine.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178c6.svg)](sdk-typescript/)
@@ -47,6 +47,24 @@ Put it in front of your agents two ways: the **Python / TypeScript SDKs**, or a
   touching its code.
 - 🐍 **Python &amp; TypeScript SDKs** — Anthropic and OpenAI middleware with
   feature parity on the runtime path.
+
+## Use cases
+
+- **Guardrail LLM agents in production** — put a policy-as-code firewall in front
+  of Claude, OpenAI, and MCP tool calls so autonomous agents can't take unsafe or
+  out-of-scope actions.
+- **Detect & block prompt injection and data exfiltration** — catch indirect
+  prompt-injection, jailbreaks, and exfil kill-chains (OWASP LLM01/LLM02/LLM06)
+  and quarantine the offending agent inline.
+- **Human-in-the-loop approvals** — route high-risk tool calls for review instead
+  of denying outright, keeping a full approval trail.
+- **AI agent observability & LLM cost control (FinOps)** — meter per-agent token
+  spend and latency, alert on cost spikes, and enforce budgets before the next call.
+- **Prove AI compliance to auditors** — live control-posture mapping and evidence
+  reports for the **NIST AI RMF**, **EU AI Act**, **ISO/IEC 42001**, and the
+  **OWASP LLM Top 10**.
+- **AI SIEM / EDR** — correlate agent activity into security findings mapped to
+  **MITRE ATLAS**, with SOAR playbooks and an org-wide kill-switch for incident response.
 
 ## How it fits together
 
@@ -187,6 +205,11 @@ issues via [SECURITY.md](SECURITY.md).
 
 ---
 
-<sub>Keywords: AI agent security · LLM guardrails · runtime policy enforcement ·
-MCP proxy · prompt-injection detection · AI governance · SIEM / EDR for AI
-agents · NIST AI RMF · EU AI Act · OWASP LLM Top 10 · agent audit log.</sub>
+<sub>Keywords: AI agent security · agentic AI security · LLM guardrails · AI agent
+firewall · LLM firewall · runtime policy enforcement · policy-as-code for AI ·
+tool-call governance · MCP proxy · Model Context Protocol security ·
+prompt-injection detection · jailbreak & data-exfiltration defense · AI
+governance · AI agent observability · LLMOps · LLM cost control / FinOps ·
+human-in-the-loop approvals · SIEM / EDR for AI agents · MITRE ATLAS · NIST AI
+RMF · EU AI Act · ISO/IEC 42001 · OWASP LLM Top 10 · tamper-evident agent audit
+log · Claude & OpenAI middleware.</sub>
